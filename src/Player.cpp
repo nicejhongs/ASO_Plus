@@ -4,8 +4,8 @@
 Player::Player(float x, float y)
     : m_x(x)
     , m_y(y)
-    , m_width(40.0f)
-    , m_height(40.0f)
+    , m_width(80.0f)  // 256x256 스프라이트를 80x80으로 표시
+    , m_height(80.0f)
     , m_speed(300.0f)
     , m_shootCooldown(0.2f)
     , m_shootTimer(0.0f)
@@ -27,12 +27,12 @@ void Player::update(float deltaTime) {
     float playerCenterX = m_x + m_width / 2;
     float playerCenterY = m_y + m_height / 2;
     
-    // 마우스와 플레이어 사이의 거리 계산
+    // Calculate distance between mouse and player
     float dx = m_mouseX - playerCenterX;
     float dy = m_mouseY - playerCenterY;
     float distance = sqrt(dx * dx + dy * dy);
     
-    // 데드존 설정 (마우스가 플레이어에 너무 가까우면 이동하지 않음)
+    // Set deadzone (don't move if mouse is too close to player)
     const float deadZone = 20.0f;
     
     if (distance > deadZone) {
@@ -70,13 +70,14 @@ void Player::render(SDL_Renderer* renderer) {
 }
 
 void Player::render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRect) {
-    if (texture && srcRect) {
+    if (texture) {
         SDL_Rect dstRect = {
             static_cast<int>(m_x),
             static_cast<int>(m_y),
             static_cast<int>(m_width),
             static_cast<int>(m_height)
         };
+        // srcRect가 nullptr이면 전체 텍스처 사용
         SDL_RenderCopy(renderer, texture, srcRect, &dstRect);
     } else {
         // 폴백: 기본 렌더링

@@ -9,10 +9,24 @@
 #include <windows.h>
 #endif
 
+// 실행 파일 경로를 기준으로 리소스 경로 생성
+std::string getResourcePath(const std::string& filename) {
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    std::string::size_type pos = std::string(buffer).find_last_of("\\/");
+    std::string exePath = std::string(buffer).substr(0, pos);
+    return exePath + "\\assets\\" + filename;
+#else
+    return "assets/" + filename;
+#endif
+}
+
 Game::Game() 
     : m_window(nullptr)
     , m_renderer(nullptr)
     , m_running(false)
+    , m_mouseGrabbed(true)  // Locked by default
     , m_enemySpawnTimer(0.0f)
     , m_gameState(GameState::MENU)
     , m_stateTimer(0.0f)
@@ -21,7 +35,17 @@ Game::Game()
     , m_highScore(0)
     , m_shootSound(nullptr)
     , m_explosionSound(nullptr)
-    , m_spriteSheet(nullptr)
+    , m_bgMusic(nullptr)
+    , m_backgroundTexture(nullptr)
+    , m_backgroundY1(0.0f)
+    , m_backgroundY2(-600.0f)  // 화면 높이만큼 위에
+    , m_backgroundScrollSpeed(50.0f)  // 픽셀/초
+    , m_playerTexture(nullptr)
+    , m_enemyTexture(nullptr)
+    , m_titleFont(nullptr)
+    , m_uiFont(nullptr)
+    , m_subtitleFont(nullptr)
+    , m_titleTexture(nullptr)
 {
     loadHighScores();
 }
@@ -57,6 +81,12 @@ bool Game::init(const char* title, int width, int height) {
         SDL_Log("렌더러 생성 실패: %s", SDL_GetError());
         return false;
     }
+    
+    // SDL_ttf 초기화
+    if (TTF_Init() == -1) {
+        SDL_Log("TTF 초기화 실패: %s", TTF_GetError());
+        // 계속 진행 (폰트 없이)
+    }
 
     // 랜덤 시드 초기화
     srand(static_cast<unsigned>(time(nullptr)));
@@ -67,42 +97,126 @@ bool Game::init(const char* title, int width, int height) {
         // 계속 진행 (사운드 없이)
     }
     
-    // 사운드 파일 로드
-    m_shootSound = Mix_LoadWAV("assets/shoot.wav");
+    // 사운드 파일 로드 (WAV 형식, Mix_Chunk 사용)
+    std::string shootPath = getResourcePath("shot_01.wav");
+    m_shootSound = Mix_LoadWAV(shootPath.c_str());
     if (!m_shootSound) {
-        SDL_Log("shoot.wav 로드 실패: %s", Mix_GetError());
+        SDL_Log("INFO: shot_01.wav 로드 실패: %s (path: %s)", Mix_GetError(), shootPath.c_str());
+    } else {
+        SDL_Log("INFO: shot_01.wav 로드 성공: %s", shootPath.c_str());
     }
     
-    m_explosionSound = Mix_LoadWAV("assets/explosion.wav");
+    std::string explosionPath = getResourcePath("exlposion_01.wav");
+    m_explosionSound = Mix_LoadWAV(explosionPath.c_str());
     if (!m_explosionSound) {
-        SDL_Log("explosion.wav 로드 실패: %s", Mix_GetError());
+        SDL_Log("INFO: exlposion_01.wav 로드 실패: %s (path: %s)", Mix_GetError(), explosionPath.c_str());
+    } else {
+        SDL_Log("INFO: exlposion_01.wav 로드 성공: %s", explosionPath.c_str());
+    }
+    
+    // 배경음악 로드 (WAV 형식으로 Mix_Music 사용)
+    std::string bgMusicPath = getResourcePath("aso_plus_opening.wav");
+    m_bgMusic = Mix_LoadMUS(bgMusicPath.c_str());
+    if (!m_bgMusic) {
+        SDL_Log("INFO: aso_plus_opening.wav 로드 실패: %s (path: %s)", Mix_GetError(), bgMusicPath.c_str());
+    } else {
+        SDL_Log("INFO: aso_plus_opening.wav 로드 성공: %s", bgMusicPath.c_str());
+        // 배경음악 무한 반복 재생 (-1 = loop)
+        Mix_PlayMusic(m_bgMusic, -1);
+        Mix_VolumeMusic(64); // 볼륨 50% (0-128)
     }
 
-    // 스프라이트 시트 로드
+    // 스프라이트 이미지 로드 (PNG 투명도 지원)
     int imgFlags = IMG_INIT_PNG;
     if (!(IMG_Init(imgFlags) & imgFlags)) {
         SDL_Log("SDL_image 초기화 실패: %s", IMG_GetError());
     }
     
-    SDL_Surface* surface = IMG_Load("assets/sprites.png");
-    if (surface) {
-        m_spriteSheet = SDL_CreateTextureFromSurface(m_renderer, surface);
-        SDL_FreeSurface(surface);
+    // 배경화면 로드 (background.png)
+    std::string bgPath = getResourcePath("background.png");
+    SDL_Surface* bgSurface = IMG_Load(bgPath.c_str());
+    if (bgSurface) {
+        m_backgroundTexture = SDL_CreateTextureFromSurface(m_renderer, bgSurface);
+        SDL_FreeSurface(bgSurface);
         
-        if (m_spriteSheet) {
-            // 스프라이트 시트에서 플레이어와 적의 위치 정의
-            // 플레이어 스프라이트 (왼쪽 상단 우주선, 크기 약 64x64)
-            m_playerSprite = {0, 0, 64, 64};
-            
-            // 적 스프라이트 (오른쪽 적 우주선, 크기 약 64x64)
-            m_enemySprite = {640, 0, 64, 64};
+        if (m_backgroundTexture) {
+            SDL_Log("INFO: background.png 로드 성공: %s", bgPath.c_str());
         }
     } else {
-        SDL_Log("sprites.png 로드 실패: %s", IMG_GetError());
+        SDL_Log("INFO: background.png 로드 실패: %s (path: %s)", IMG_GetError(), bgPath.c_str());
+    }
+    
+    // 플레이어 스프라이트 로드 (ship_01.png)
+    std::string playerSpritePath = getResourcePath("ship_01.png");
+    SDL_Surface* playerSurface = IMG_Load(playerSpritePath.c_str());
+    if (playerSurface) {
+        // 흰색 배경을 투명으로 처리 (RGB: 255, 255, 255)
+        SDL_SetColorKey(playerSurface, SDL_TRUE, SDL_MapRGB(playerSurface->format, 255, 255, 255));
+        
+        m_playerTexture = SDL_CreateTextureFromSurface(m_renderer, playerSurface);
+        SDL_FreeSurface(playerSurface);
+        
+        if (m_playerTexture) {
+            SDL_Log("INFO: ship_01.png 로드 성공: %s", playerSpritePath.c_str());
+            SDL_SetTextureBlendMode(m_playerTexture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: ship_01.png 로드 실패: %s (path: %s)", IMG_GetError(), playerSpritePath.c_str());
+    }
+    
+    // 적 스프라이트 로드 (enemy_02.png)
+    std::string enemySpritePath = getResourcePath("enemy_02.png");
+    SDL_Surface* enemySurface = IMG_Load(enemySpritePath.c_str());
+    if (enemySurface) {
+        // 흰색 배경을 투명으로 처리 (RGB: 255, 255, 255)
+        SDL_SetColorKey(enemySurface, SDL_TRUE, SDL_MapRGB(enemySurface->format, 255, 255, 255));
+        
+        m_enemyTexture = SDL_CreateTextureFromSurface(m_renderer, enemySurface);
+        SDL_FreeSurface(enemySurface);
+        
+        if (m_enemyTexture) {
+            SDL_Log("INFO: enemy_02.png 로드 성공: %s", enemySpritePath.c_str());
+            SDL_SetTextureBlendMode(m_enemyTexture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: enemy_02.png 로드 실패: %s (path: %s)", IMG_GetError(), enemySpritePath.c_str());
+    }
+    
+    // 폰트 로드 (Windows 기본 폰트 사용)
+    m_titleFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 72);
+    if (!m_titleFont) {
+        SDL_Log("INFO: 폰트 로드 실패: %s", TTF_GetError());
+    } else {
+        // "ASO PLUS" 텍스트 렌더링
+        SDL_Color titleColor = {255, 255, 255, 255};  // 흰색
+        SDL_Surface* titleSurface = TTF_RenderText_Blended(m_titleFont, "ASO PLUS", titleColor);
+        if (titleSurface) {
+            m_titleTexture = SDL_CreateTextureFromSurface(m_renderer, titleSurface);
+            SDL_FreeSurface(titleSurface);
+            if (m_titleTexture) {
+                SDL_Log("INFO: 타이틀 텍스트 생성 성공");
+            }
+        }
+    }
+    
+    // UI 폰트 로드 (점수, 카운트다운용)
+    m_uiFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 48);
+    if (!m_uiFont) {
+        SDL_Log("INFO: UI 폰트 로드 실패: %s", TTF_GetError());
+    }
+    
+    // 부제목 폰트 로드
+    m_subtitleFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 32);
+    if (!m_subtitleFont) {
+        SDL_Log("INFO: 부제목 폰트 로드 실패: %s", TTF_GetError());
     }
 
     // 플레이어 생성 (화면 중앙 하단)
     m_player = std::make_unique<Player>(width / 2.0f, height - 80.0f);
+    
+    // Confine mouse to window
+    SDL_SetWindowGrab(m_window, SDL_TRUE);
+    SDL_Log("INFO: Mouse grab enabled (ESC to release)");
 
     m_running = true;
     return true;
@@ -114,9 +228,29 @@ void Game::handleEvents() {
         if (event.type == SDL_QUIT) {
             m_running = false;
         }
+        else if (event.type == SDL_KEYDOWN) {
+            // ESC to toggle mouse grab
+            if (event.key.keysym.sym == SDLK_ESCAPE) {
+                m_mouseGrabbed = !m_mouseGrabbed;
+                SDL_SetWindowGrab(m_window, m_mouseGrabbed ? SDL_TRUE : SDL_FALSE);
+                SDL_Log("INFO: Mouse grab %s", m_mouseGrabbed ? "enabled" : "disabled");
+            }
+            // Any key to start from MENU or GAME_OVER
+            else if (m_gameState == GameState::MENU || m_gameState == GameState::GAME_OVER) {
+                m_gameState = GameState::COUNTDOWN;
+                m_stateTimer = 5.0f;
+                m_lives = 3;
+                m_score = 0;
+                m_enemies.clear();
+                m_bullets.clear();
+                int windowWidth, windowHeight;
+                SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+                m_player = std::make_unique<Player>(windowWidth / 2.0f, windowHeight - 80.0f);
+            }
+        }
         else if (event.type == SDL_MOUSEMOTION) {
             if (m_gameState == GameState::PLAYING) {
-                // 마우스 이동 시 마우스 위치 업데이트
+                // Update mouse position on motion
                 m_player->setMousePosition(static_cast<float>(event.motion.x), 
                                            static_cast<float>(event.motion.y));
             }
@@ -178,6 +312,18 @@ void Game::update(float deltaTime) {
     }
     
     // PLAYING 상태에서만 게임 로직 실행
+    // 배경 스크롤
+    m_backgroundY1 += m_backgroundScrollSpeed * deltaTime;
+    m_backgroundY2 += m_backgroundScrollSpeed * deltaTime;
+    
+    // 배경이 화면 밖으로 나가면 다시 위로
+    if (m_backgroundY1 >= 600) {
+        m_backgroundY1 = m_backgroundY2 - 600;
+    }
+    if (m_backgroundY2 >= 600) {
+        m_backgroundY2 = m_backgroundY1 - 600;
+    }
+    
     // 플레이어 업데이트
     m_player->update(deltaTime);
 
@@ -237,6 +383,12 @@ void Game::update(float deltaTime) {
                     if (m_score > m_highScore) {
                         m_highScore = m_score;
                     }
+                    
+                    // 폭발음 재생
+                    if (m_explosionSound) {
+                        Mix_PlayChannel(-1, m_explosionSound, 0);
+                    }
+                    
                     enemyIt = m_enemies.erase(enemyIt);
                     bulletIt = m_bullets.erase(bulletIt);
                     bulletRemoved = true;
@@ -320,6 +472,14 @@ void Game::render() {
     // 화면 클리어 (검은색)
     SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
     SDL_RenderClear(m_renderer);
+    
+    // 배경 그리기 (가장 먼저)
+    if (m_backgroundTexture) {
+        SDL_Rect bg1 = {0, static_cast<int>(m_backgroundY1), 800, 600};
+        SDL_Rect bg2 = {0, static_cast<int>(m_backgroundY2), 800, 600};
+        SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg1);
+        SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg2);
+    }
 
     // 게임 상태에 따른 렌더링
     if (m_gameState == GameState::MENU) {
@@ -329,17 +489,17 @@ void Game::render() {
         renderCountdown();
     }
     else if (m_gameState == GameState::PLAYING) {
-        // 플레이어 렌더링 (스프라이트 사용)
-        if (m_spriteSheet) {
-            m_player->render(m_renderer, m_spriteSheet, &m_playerSprite);
+        // 플레이어 렌더링 (단일 텍스처 사용)
+        if (m_playerTexture) {
+            m_player->render(m_renderer, m_playerTexture, nullptr);
         } else {
             m_player->render(m_renderer);
         }
 
-        // 적 렌더링 (스프라이트 사용)
+        // 적 렌더링 (단일 텍스처 사용)
         for (auto& enemy : m_enemies) {
-            if (m_spriteSheet) {
-                enemy->render(m_renderer, m_spriteSheet, &m_enemySprite);
+            if (m_enemyTexture) {
+                enemy->render(m_renderer, m_enemyTexture, nullptr);
             } else {
                 enemy->render(m_renderer);
             }
@@ -362,25 +522,48 @@ void Game::render() {
 }
 
 void Game::renderUI() {
-    // 왼쪽 위: 점수 표시 (간단한 막대로)
-    SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-    for (int i = 0; i < m_score / 10 && i < 50; i++) {
-        SDL_Rect scoreRect = { 10 + i * 3, 10, 2, 15 };
-        SDL_RenderFillRect(m_renderer, &scoreRect);
+    if (!m_uiFont) return;
+    
+    // 왼쪽 위: 점수 표시
+    SDL_Color scoreColor = {255, 255, 255, 255};  // 흰색
+    std::string scoreText = "SCORE: " + std::to_string(m_score);
+    SDL_Surface* scoreSurface = TTF_RenderText_Blended(m_uiFont, scoreText.c_str(), scoreColor);
+    if (scoreSurface) {
+        SDL_Texture* scoreTexture = SDL_CreateTextureFromSurface(m_renderer, scoreSurface);
+        if (scoreTexture) {
+            SDL_Rect scoreRect = {10, 10, scoreSurface->w, scoreSurface->h};
+            SDL_RenderCopy(m_renderer, scoreTexture, nullptr, &scoreRect);
+            SDL_DestroyTexture(scoreTexture);
+        }
+        SDL_FreeSurface(scoreSurface);
     }
     
     // 위쪽 가운데: 최고 점수 표시
-    SDL_SetRenderDrawColor(m_renderer, 255, 215, 0, 255); // 금색
-    for (int i = 0; i < m_highScore / 10 && i < 50; i++) {
-        SDL_Rect highScoreRect = { 375 + i * 3, 10, 2, 15 };
-        SDL_RenderFillRect(m_renderer, &highScoreRect);
+    SDL_Color highScoreColor = {255, 215, 0, 255}; // 금색
+    std::string highScoreText = "HI: " + std::to_string(m_highScore);
+    SDL_Surface* highScoreSurface = TTF_RenderText_Blended(m_uiFont, highScoreText.c_str(), highScoreColor);
+    if (highScoreSurface) {
+        SDL_Texture* highScoreTexture = SDL_CreateTextureFromSurface(m_renderer, highScoreSurface);
+        if (highScoreTexture) {
+            SDL_Rect highScoreRect = {(800 - highScoreSurface->w) / 2, 10, highScoreSurface->w, highScoreSurface->h};
+            SDL_RenderCopy(m_renderer, highScoreTexture, nullptr, &highScoreRect);
+            SDL_DestroyTexture(highScoreTexture);
+        }
+        SDL_FreeSurface(highScoreSurface);
     }
     
-    // 오른쪽 위: 남은 생명 표시 (작은 우주선 모양)
-    SDL_SetRenderDrawColor(m_renderer, 0, 150, 255, 255);
-    for (int i = 0; i < m_lives; i++) {
-        SDL_Rect lifeRect = { 780 - i * 25, 10, 20, 20 };
-        SDL_RenderFillRect(m_renderer, &lifeRect);
+    // 오른쪽 위: 남은 생명 표시
+    SDL_Color livesColor = {0, 150, 255, 255};
+    std::string livesText = "LIVES: " + std::to_string(m_lives);
+    SDL_Surface* livesSurface = TTF_RenderText_Blended(m_uiFont, livesText.c_str(), livesColor);
+    if (livesSurface) {
+        SDL_Texture* livesTexture = SDL_CreateTextureFromSurface(m_renderer, livesSurface);
+        if (livesTexture) {
+            SDL_Rect livesRect = {800 - livesSurface->w - 10, 10, livesSurface->w, livesSurface->h};
+            SDL_RenderCopy(m_renderer, livesTexture, nullptr, &livesRect);
+            SDL_DestroyTexture(livesTexture);
+        }
+        SDL_FreeSurface(livesSurface);
     }
 }
 
@@ -394,14 +577,47 @@ void Game::clean() {
         Mix_FreeChunk(m_explosionSound);
         m_explosionSound = nullptr;
     }
+    if (m_bgMusic) {
+        Mix_HaltMusic();
+        Mix_FreeMusic(m_bgMusic);
+        m_bgMusic = nullptr;
+    }
     
     Mix_CloseAudio();
     
     // 텍스처 해제
-    if (m_spriteSheet) {
-        SDL_DestroyTexture(m_spriteSheet);
-        m_spriteSheet = nullptr;
+    if (m_backgroundTexture) {
+        SDL_DestroyTexture(m_backgroundTexture);
+        m_backgroundTexture = nullptr;
     }
+    if (m_playerTexture) {
+        SDL_DestroyTexture(m_playerTexture);
+        m_playerTexture = nullptr;
+    }
+    if (m_enemyTexture) {
+        SDL_DestroyTexture(m_enemyTexture);
+        m_enemyTexture = nullptr;
+    }
+    if (m_titleTexture) {
+        SDL_DestroyTexture(m_titleTexture);
+        m_titleTexture = nullptr;
+    }
+    
+    // 폰트 해제
+    if (m_titleFont) {
+        TTF_CloseFont(m_titleFont);
+        m_titleFont = nullptr;
+    }
+    if (m_uiFont) {
+        TTF_CloseFont(m_uiFont);
+        m_uiFont = nullptr;
+    }
+    if (m_subtitleFont) {
+        TTF_CloseFont(m_subtitleFont);
+        m_subtitleFont = nullptr;
+    }
+    
+    TTF_Quit();
     
     if (m_renderer) {
         SDL_DestroyRenderer(m_renderer);
@@ -417,40 +633,97 @@ void Game::clean() {
 }
 
 void Game::renderMenu() {
-    // 타이틀 텍스트 (간단한 박스로 표현)
-    SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-    SDL_Rect titleRect = { 250, 150, 300, 50 };
-    SDL_RenderDrawRect(m_renderer, &titleRect);
-    
-    // "ASO PLUS" 텍스트를 막대로 표현
-    for (int i = 0; i < 8; i++) {
-        SDL_Rect letterRect = { 280 + i * 50, 160, 30, 30 };
-        SDL_RenderFillRect(m_renderer, &letterRect);
+    // "ASO PLUS" 타이틀 표시
+    if (m_titleTexture) {
+        int textW, textH;
+        SDL_QueryTexture(m_titleTexture, nullptr, nullptr, &textW, &textH);
+        SDL_Rect titleRect = {
+            (800 - textW) / 2,  // 중앙 정렬
+            100,
+            textW,
+            textH
+        };
+        SDL_RenderCopy(m_renderer, m_titleTexture, nullptr, &titleRect);
+    } else {
+        // 폰트가 없을 경우 폴백: 간단한 박스
+        SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+        SDL_Rect titleRect = { 250, 150, 300, 50 };
+        SDL_RenderDrawRect(m_renderer, &titleRect);
+        
+        for (int i = 0; i < 8; i++) {
+            SDL_Rect letterRect = { 280 + i * 50, 160, 30, 30 };
+            SDL_RenderFillRect(m_renderer, &letterRect);
+        }
     }
     
-    // 시작 안내 메시지
-    SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
-    SDL_Rect startRect = { 300, 300, 200, 30 };
-    SDL_RenderFillRect(m_renderer, &startRect);
-    
-    // "CLICK TO START" 표시
-    for (int i = 0; i < 3; i++) {
-        SDL_Rect clickRect = { 320 + i * 40, 310, 30, 10 };
-        SDL_RenderFillRect(m_renderer, &clickRect);
+    // "Press any Key To Start" 부제목 표시
+    if (m_subtitleFont) {
+        SDL_Color subtitleColor = {0, 255, 0, 255};  // 녹색
+        SDL_Surface* subtitleSurface = TTF_RenderText_Blended(m_subtitleFont, "Press any Key To Start", subtitleColor);
+        if (subtitleSurface) {
+            SDL_Texture* subtitleTexture = SDL_CreateTextureFromSurface(m_renderer, subtitleSurface);
+            if (subtitleTexture) {
+                SDL_Rect subtitleRect = {
+                    (800 - subtitleSurface->w) / 2,
+                    300,
+                    subtitleSurface->w,
+                    subtitleSurface->h
+                };
+                SDL_RenderCopy(m_renderer, subtitleTexture, nullptr, &subtitleRect);
+                SDL_DestroyTexture(subtitleTexture);
+            }
+            SDL_FreeSurface(subtitleSurface);
+        }
+    } else {
+        // 폰트가 없을 경우 폴백
+        SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
+        SDL_Rect startRect = { 300, 300, 200, 30 };
+        SDL_RenderFillRect(m_renderer, &startRect);
     }
 }
 
 void Game::renderCountdown() {
+    if (!m_titleFont) return;
+    
     // 카운트다운 숫자 표시
     int countdown = static_cast<int>(m_stateTimer) + 1;
-    SDL_SetRenderDrawColor(m_renderer, 255, 255, 0, 255);
-    
-    // 큰 숫자로 표시
-    drawNumber(countdown, 350, 250, 10);
+    SDL_Color countdownColor = {255, 255, 0, 255};  // 노란색
+    std::string countdownText = std::to_string(countdown);
+    SDL_Surface* countdownSurface = TTF_RenderText_Blended(m_titleFont, countdownText.c_str(), countdownColor);
+    if (countdownSurface) {
+        SDL_Texture* countdownTexture = SDL_CreateTextureFromSurface(m_renderer, countdownSurface);
+        if (countdownTexture) {
+            SDL_Rect countdownRect = {
+                (800 - countdownSurface->w) / 2,
+                250,
+                countdownSurface->w,
+                countdownSurface->h
+            };
+            SDL_RenderCopy(m_renderer, countdownTexture, nullptr, &countdownRect);
+            SDL_DestroyTexture(countdownTexture);
+        }
+        SDL_FreeSurface(countdownSurface);
+    }
     
     // "GET READY" 메시지
-    SDL_Rect readyRect = { 300, 150, 200, 40 };
-    SDL_RenderFillRect(m_renderer, &readyRect);
+    if (m_uiFont) {
+        SDL_Color readyColor = {255, 255, 255, 255};  // 흰색
+        SDL_Surface* readySurface = TTF_RenderText_Blended(m_uiFont, "GET READY", readyColor);
+        if (readySurface) {
+            SDL_Texture* readyTexture = SDL_CreateTextureFromSurface(m_renderer, readySurface);
+            if (readyTexture) {
+                SDL_Rect readyRect = {
+                    (800 - readySurface->w) / 2,
+                    150,
+                    readySurface->w,
+                    readySurface->h
+                };
+                SDL_RenderCopy(m_renderer, readyTexture, nullptr, &readyRect);
+                SDL_DestroyTexture(readyTexture);
+            }
+            SDL_FreeSurface(readySurface);
+        }
+    }
 }
 
 void Game::renderGameOver() {

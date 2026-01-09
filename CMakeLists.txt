@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_mixer CONFIG REQUIRED)
 find_package(SDL2_image CONFIG REQUIRED)
+find_package(SDL2_ttf CONFIG REQUIRED)
 
 # 소스 파일
 set(SOURCES
@@ -32,6 +33,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${SDL2_LIBRARIES} 
     $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
     $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
+    $<IF:$<TARGET_EXISTS:SDL2_ttf::SDL2_ttf>,SDL2_ttf::SDL2_ttf,SDL2_ttf::SDL2_ttf-static>
 )
 
 # Windows 전용 설정
@@ -50,6 +52,13 @@ if(WIN32)
             endif()
         endif()
     endif()
+    
+    # assets 폴더를 실행 파일 디렉토리로 복사
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
+    )
 endif()
 
 # Android 빌드 설정 (향후 추가)

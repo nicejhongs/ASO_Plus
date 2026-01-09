@@ -3,8 +3,8 @@
 Enemy::Enemy(float x, float y)
     : m_x(x)
     , m_y(y)
-    , m_width(40.0f)
-    , m_height(40.0f)
+    , m_width(60.0f)  // 크기 증가
+    , m_height(60.0f)
     , m_speed(150.0f)
 {
 }
@@ -34,13 +34,14 @@ bool Enemy::isOffScreen() const {
 }
 
 void Enemy::render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRect) {
-    if (texture && srcRect) {
+    if (texture) {
         SDL_Rect dstRect = {
             static_cast<int>(m_x),
             static_cast<int>(m_y),
             static_cast<int>(m_width),
             static_cast<int>(m_height)
         };
+        // srcRect가 nullptr이면 전체 텍스처 사용
         SDL_RenderCopy(renderer, texture, srcRect, &dstRect);
     } else {
         // 폴백: 기본 렌더링

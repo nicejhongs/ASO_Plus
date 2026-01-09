@@ -32,3 +32,18 @@ void Enemy::render(SDL_Renderer* renderer) {
 bool Enemy::isOffScreen() const {
     return m_y > 600; // 화면 높이보다 아래로 나가면 제거
 }
+
+void Enemy::render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRect) {
+    if (texture && srcRect) {
+        SDL_Rect dstRect = {
+            static_cast<int>(m_x),
+            static_cast<int>(m_y),
+            static_cast<int>(m_width),
+            static_cast<int>(m_height)
+        };
+        SDL_RenderCopy(renderer, texture, srcRect, &dstRect);
+    } else {
+        // 폴백: 기본 렌더링
+        render(renderer);
+    }
+}

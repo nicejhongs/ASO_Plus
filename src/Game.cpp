@@ -21,6 +21,7 @@ Game::Game()
     , m_highScore(0)
     , m_shootSound(nullptr)
     , m_explosionSound(nullptr)
+    , m_spriteSheet(nullptr)
 {
     loadHighScores();
 }
@@ -75,6 +76,29 @@ bool Game::init(const char* title, int width, int height) {
     m_explosionSound = Mix_LoadWAV("assets/explosion.wav");
     if (!m_explosionSound) {
         SDL_Log("explosion.wav 로드 실패: %s", Mix_GetError());
+    }
+
+    // 스프라이트 시트 로드
+    int imgFlags = IMG_INIT_PNG;
+    if (!(IMG_Init(imgFlags) & imgFlags)) {
+        SDL_Log("SDL_image 초기화 실패: %s", IMG_GetError());
+    }
+    
+    SDL_Surface* surface = IMG_Load("assets/sprites.png");
+    if (surface) {
+        m_spriteSheet = SDL_CreateTextureFromSurface(m_renderer, surface);
+        SDL_FreeSurface(surface);
+        
+        if (m_spriteSheet) {
+            // 스프라이트 시트에서 플레이어와 적의 위치 정의
+            // 플레이어 스프라이트 (왼쪽 상단 우주선, 크기 약 64x64)
+            m_playerSprite = {0, 0, 64, 64};
+            
+            // 적 스프라이트 (오른쪽 적 우주선, 크기 약 64x64)
+            m_enemySprite = {640, 0, 64, 64};
+        }
+    } else {
+        SDL_Log("sprites.png 로드 실패: %s", IMG_GetError());
     }
 
     // 플레이어 생성 (화면 중앙 하단)
@@ -305,12 +329,20 @@ void Game::render() {
         renderCountdown();
     }
     else if (m_gameState == GameState::PLAYING) {
-        // 플레이어 렌더링
-        m_player->render(m_renderer);
+        // 플레이어 렌더링 (스프라이트 사용)
+        if (m_spriteSheet) {
+            m_player->render(m_renderer, m_spriteSheet, &m_playerSprite);
+        } else {
+            m_player->render(m_renderer);
+        }
 
-        // 적 렌더링
+        // 적 렌더링 (스프라이트 사용)
         for (auto& enemy : m_enemies) {
-            enemy->render(m_renderer);
+            if (m_spriteSheet) {
+                enemy->render(m_renderer, m_spriteSheet, &m_enemySprite);
+            } else {
+                enemy->render(m_renderer);
+            }
         }
 
         // 총알 렌더링
@@ -364,6 +396,12 @@ void Game::clean() {
     }
     
     Mix_CloseAudio();
+    
+    // 텍스처 해제
+    if (m_spriteSheet) {
+        SDL_DestroyTexture(m_spriteSheet);
+        m_spriteSheet = nullptr;
+    }
     
     if (m_renderer) {
         SDL_DestroyRenderer(m_renderer);

@@ -1,6 +1,7 @@
 #pragma once
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
+#include <SDL2/SDL_image.h>
 #include <vector>
 #include <memory>
 #include <string>
@@ -50,6 +51,10 @@ private:
     
     Mix_Chunk* m_shootSound;
     Mix_Chunk* m_explosionSound;
+    
+    SDL_Texture* m_spriteSheet;
+    SDL_Rect m_playerSprite;
+    SDL_Rect m_enemySprite;
     
     void checkPlayerEnemyCollision();
     void renderUI();

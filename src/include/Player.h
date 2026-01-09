@@ -9,6 +9,7 @@ public:
     void setMousePosition(float mouseX, float mouseY);
     void update(float deltaTime);
     void render(SDL_Renderer* renderer);
+    void render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRect);
 
     float getX() const { return m_x; }
     float getY() const { return m_y; }

@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
 #include <vector>
 #include <memory>
 #include <string>
@@ -46,6 +47,9 @@ private:
     int m_score;
     int m_highScore;
     std::vector<int> m_highScores;
+    
+    Mix_Chunk* m_shootSound;
+    Mix_Chunk* m_explosionSound;
     
     void checkPlayerEnemyCollision();
     void renderUI();

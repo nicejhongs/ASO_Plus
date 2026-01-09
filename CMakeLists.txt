@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # SDL2 찾기
 find_package(SDL2 REQUIRED)
+find_package(SDL2_mixer CONFIG REQUIRED)
 
 # 소스 파일
 set(SOURCES
@@ -26,7 +27,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 # 라이브러리 링크
-target_link_libraries(${PROJECT_NAME} PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+    ${SDL2_LIBRARIES} 
+    $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>
+)
 
 # Windows 전용 설정
 if(WIN32)

@@ -19,6 +19,8 @@ Game::Game()
     , m_lives(3)
     , m_score(0)
     , m_highScore(0)
+    , m_shootSound(nullptr)
+    , m_explosionSound(nullptr)
 {
     loadHighScores();
 }
@@ -57,6 +59,23 @@ bool Game::init(const char* title, int width, int height) {
 
     // 랜덤 시드 초기화
     srand(static_cast<unsigned>(time(nullptr)));
+
+    // SDL_mixer 초기화
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        SDL_Log("SDL_mixer 초기화 실패: %s", Mix_GetError());
+        // 계속 진행 (사운드 없이)
+    }
+    
+    // 사운드 파일 로드
+    m_shootSound = Mix_LoadWAV("assets/shoot.wav");
+    if (!m_shootSound) {
+        SDL_Log("shoot.wav 로드 실패: %s", Mix_GetError());
+    }
+    
+    m_explosionSound = Mix_LoadWAV("assets/explosion.wav");
+    if (!m_explosionSound) {
+        SDL_Log("explosion.wav 로드 실패: %s", Mix_GetError());
+    }
 
     // 플레이어 생성 (화면 중앙 하단)
     m_player = std::make_unique<Player>(width / 2.0f, height - 80.0f);
@@ -101,10 +120,15 @@ void Game::handleEvents() {
                     ));
                     m_player->resetShootTimer();
                     
-                    // 발사 사운드 (Windows 비프음)
-                    #ifdef _WIN32
-                    Beep(800, 50); // 800Hz, 50ms
-                    #endif
+                    // 발사 사운드 재생
+                    if (m_shootSound) {
+                        Mix_PlayChannel(-1, m_shootSound, 0);
+                    } else {
+                        // 폴백: Windows 비프음
+                        #ifdef _WIN32
+                        Beep(800, 50);
+                        #endif
+                    }
                 }
             }
         }
@@ -220,10 +244,15 @@ void Game::checkPlayerEnemyCollision() {
             enemyIt = m_enemies.erase(enemyIt);
             m_lives--;
             
-            // 폭발음 재생 (낮은 주파수, 긴 지속시간)
-            #ifdef _WIN32
-            Beep(300, 200); // 300Hz, 200ms
-            #endif
+            // 폭발음 재생
+            if (m_explosionSound) {
+                Mix_PlayChannel(-1, m_explosionSound, 0);
+            } else {
+                // 폴백: Windows 비프음
+                #ifdef _WIN32
+                Beep(300, 200);
+                #endif
+            }
             
             // 생명이 0이 되면 게임 오버
             if (m_lives <= 0) {
@@ -324,6 +353,18 @@ void Game::renderUI() {
 }
 
 void Game::clean() {
+    // 사운드 해제
+    if (m_shootSound) {
+        Mix_FreeChunk(m_shootSound);
+        m_shootSound = nullptr;
+    }
+    if (m_explosionSound) {
+        Mix_FreeChunk(m_explosionSound);
+        m_explosionSound = nullptr;
+    }
+    
+    Mix_CloseAudio();
+    
     if (m_renderer) {
         SDL_DestroyRenderer(m_renderer);
         m_renderer = nullptr;

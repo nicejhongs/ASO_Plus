@@ -2,6 +2,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
+#include <fstream>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -12,10 +14,13 @@ Game::Game()
     , m_renderer(nullptr)
     , m_running(false)
     , m_enemySpawnTimer(0.0f)
+    , m_gameState(GameState::MENU)
+    , m_stateTimer(0.0f)
     , m_lives(3)
     , m_score(0)
     , m_highScore(0)
 {
+    loadHighScores();
 }
 
 Game::~Game() {
@@ -67,30 +72,64 @@ void Game::handleEvents() {
             m_running = false;
         }
         else if (event.type == SDL_MOUSEMOTION) {
-            // 마우스 이동 시 마우스 위치 업데이트
-            m_player->setMousePosition(static_cast<float>(event.motion.x), 
-                                       static_cast<float>(event.motion.y));
+            if (m_gameState == GameState::PLAYING) {
+                // 마우스 이동 시 마우스 위치 업데이트
+                m_player->setMousePosition(static_cast<float>(event.motion.x), 
+                                           static_cast<float>(event.motion.y));
+            }
         }
         else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            // 마우스 클릭 시 총알 발사
-            if (event.button.button == SDL_BUTTON_LEFT && m_player->canShoot()) {
-                m_bullets.push_back(std::make_unique<Bullet>(
-                    m_player->getX() + m_player->getWidth() / 2,
-                    m_player->getY(),
-                    Bullet::Owner::PLAYER
-                ));
-                m_player->resetShootTimer();
-                
-                // 발사 사운드 (Windows 비프음)
-                #ifdef _WIN32
-                Beep(800, 50); // 800Hz, 50ms
-                #endif
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                // MENU 또는 GAME_OVER 상태에서 클릭하면 카운트다운 시작
+                if (m_gameState == GameState::MENU || m_gameState == GameState::GAME_OVER) {
+                    m_gameState = GameState::COUNTDOWN;
+                    m_stateTimer = 5.0f;
+                    m_lives = 3;
+                    m_score = 0;
+                    m_enemies.clear();
+                    m_bullets.clear();
+                    int windowWidth, windowHeight;
+                    SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+                    m_player = std::make_unique<Player>(windowWidth / 2.0f, windowHeight - 80.0f);
+                }
+                // PLAYING 상태에서는 총알 발사
+                else if (m_gameState == GameState::PLAYING && m_player->canShoot()) {
+                    m_bullets.push_back(std::make_unique<Bullet>(
+                        m_player->getX() + m_player->getWidth() / 2,
+                        m_player->getY(),
+                        Bullet::Owner::PLAYER
+                    ));
+                    m_player->resetShootTimer();
+                    
+                    // 발사 사운드 (Windows 비프음)
+                    #ifdef _WIN32
+                    Beep(800, 50); // 800Hz, 50ms
+                    #endif
+                }
             }
         }
     }
 }
 
 void Game::update(float deltaTime) {
+    // 게임 상태에 따른 처리
+    if (m_gameState == GameState::MENU) {
+        // 메뉴 상태에서는 아무것도 업데이트하지 않음
+        return;
+    }
+    else if (m_gameState == GameState::COUNTDOWN) {
+        m_stateTimer -= deltaTime;
+        if (m_stateTimer <= 0) {
+            m_gameState = GameState::PLAYING;
+        }
+        return;
+    }
+    else if (m_gameState == GameState::GAME_OVER) {
+        // 게임 오버 상태에서는 아무것도 업데이트하지 않음
+        return;
+    }
+    
+    // PLAYING 상태에서만 게임 로직 실행
     // 플레이어 업데이트
     m_player->update(deltaTime);
 
@@ -186,7 +225,7 @@ void Game::checkPlayerEnemyCollision() {
             Beep(300, 200); // 300Hz, 200ms
             #endif
             
-            // 생명이 0이 되면 게임 오버 (리셋)
+            // 생명이 0이 되면 게임 오버
             if (m_lives <= 0) {
                 // 화면을 빨간색으로 플래시 (폭발 효과)
                 SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 255);
@@ -200,13 +239,20 @@ void Game::checkPlayerEnemyCollision() {
                 SDL_RenderPresent(m_renderer);
                 SDL_Delay(200); // 0.2초 대기
                 
-                // 게임 리셋
-                m_lives = 3;
-                m_score = 0;
+                // 최고 점수 저장
+                addHighScore(m_score);
+                
+                // 게임 오버 상태로 전환
+                m_gameState = GameState::GAME_OVER;
                 m_enemies.clear();
                 m_bullets.clear();
-                
-                // 플레이어 위치 리셋
+            }
+            else {
+                // 생명이 남아있으면 카운트다운 후 재시작
+                m_gameState = GameState::COUNTDOWN;
+                m_stateTimer = 3.0f; // 3초 카운트다운
+                m_enemies.clear();
+                m_bullets.clear();
                 int windowWidth, windowHeight;
                 SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
                 m_player = std::make_unique<Player>(windowWidth / 2.0f, windowHeight - 80.0f);
@@ -222,21 +268,33 @@ void Game::render() {
     SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
     SDL_RenderClear(m_renderer);
 
-    // 플레이어 렌더링
-    m_player->render(m_renderer);
-
-    // 적 렌더링
-    for (auto& enemy : m_enemies) {
-        enemy->render(m_renderer);
+    // 게임 상태에 따른 렌더링
+    if (m_gameState == GameState::MENU) {
+        renderMenu();
     }
-
-    // 총알 렌더링
-    for (auto& bullet : m_bullets) {
-        bullet->render(m_renderer);
+    else if (m_gameState == GameState::COUNTDOWN) {
+        renderCountdown();
     }
-    
-    // UI 렌더링
-    renderUI();
+    else if (m_gameState == GameState::PLAYING) {
+        // 플레이어 렌더링
+        m_player->render(m_renderer);
+
+        // 적 렌더링
+        for (auto& enemy : m_enemies) {
+            enemy->render(m_renderer);
+        }
+
+        // 총알 렌더링
+        for (auto& bullet : m_bullets) {
+            bullet->render(m_renderer);
+        }
+        
+        // UI 렌더링
+        renderUI();
+    }
+    else if (m_gameState == GameState::GAME_OVER) {
+        renderGameOver();
+    }
 
     // 화면에 표시
     SDL_RenderPresent(m_renderer);
@@ -277,4 +335,144 @@ void Game::clean() {
     }
 
     SDL_Quit();
+}
+
+void Game::renderMenu() {
+    // 타이틀 텍스트 (간단한 박스로 표현)
+    SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+    SDL_Rect titleRect = { 250, 150, 300, 50 };
+    SDL_RenderDrawRect(m_renderer, &titleRect);
+    
+    // "ASO PLUS" 텍스트를 막대로 표현
+    for (int i = 0; i < 8; i++) {
+        SDL_Rect letterRect = { 280 + i * 50, 160, 30, 30 };
+        SDL_RenderFillRect(m_renderer, &letterRect);
+    }
+    
+    // 시작 안내 메시지
+    SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
+    SDL_Rect startRect = { 300, 300, 200, 30 };
+    SDL_RenderFillRect(m_renderer, &startRect);
+    
+    // "CLICK TO START" 표시
+    for (int i = 0; i < 3; i++) {
+        SDL_Rect clickRect = { 320 + i * 40, 310, 30, 10 };
+        SDL_RenderFillRect(m_renderer, &clickRect);
+    }
+}
+
+void Game::renderCountdown() {
+    // 카운트다운 숫자 표시
+    int countdown = static_cast<int>(m_stateTimer) + 1;
+    SDL_SetRenderDrawColor(m_renderer, 255, 255, 0, 255);
+    
+    // 큰 숫자로 표시
+    drawNumber(countdown, 350, 250, 10);
+    
+    // "GET READY" 메시지
+    SDL_Rect readyRect = { 300, 150, 200, 40 };
+    SDL_RenderFillRect(m_renderer, &readyRect);
+}
+
+void Game::renderGameOver() {
+    // "GAME OVER" 텍스트
+    SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 255);
+    SDL_Rect gameOverRect = { 250, 100, 300, 50 };
+    SDL_RenderFillRect(m_renderer, &gameOverRect);
+    
+    // 현재 점수 표시
+    SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+    drawNumber(m_score, 350, 200, 5);
+    
+    // 최고 점수 목록 표시
+    SDL_SetRenderDrawColor(m_renderer, 255, 215, 0, 255);
+    int y = 280;
+    for (size_t i = 0; i < m_highScores.size() && i < 10; i++) {
+        drawNumber(static_cast<int>(i + 1), 200, y, 2);
+        drawNumber(m_highScores[i], 350, y, 3);
+        y += 30;
+    }
+    
+    // "CLICK TO RESTART" 메시지
+    SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
+    SDL_Rect restartRect = { 280, 550, 240, 30 };
+    SDL_RenderFillRect(m_renderer, &restartRect);
+}
+
+void Game::drawNumber(int number, int x, int y, int scale) {
+    // 7-세그먼트 스타일로 숫자 그리기
+    if (number == 0) number = 0; // 음수 방지
+    
+    std::string numStr = std::to_string(number);
+    int digitWidth = 8 * scale;
+    int spacing = 2 * scale;
+    
+    for (size_t i = 0; i < numStr.length(); i++) {
+        int digit = numStr[i] - '0';
+        int dx = x + i * (digitWidth + spacing);
+        
+        // 간단한 블록 스타일 숫자
+        for (int row = 0; row < 5; row++) {
+            for (int col = 0; col < 3; col++) {
+                bool fill = false;
+                // 각 숫자의 패턴 (간단화)
+                if (digit == 0) fill = (row == 0 || row == 4 || col == 0 || col == 2);
+                else if (digit == 1) fill = (col == 2);
+                else if (digit == 2) fill = (row == 0 || row == 2 || row == 4 || (row == 1 && col == 2) || (row == 3 && col == 0));
+                else if (digit == 3) fill = (row == 0 || row == 2 || row == 4 || col == 2);
+                else if (digit == 4) fill = ((row <= 2 && col == 0) || col == 2 || row == 2);
+                else if (digit == 5) fill = (row == 0 || row == 2 || row == 4 || (row == 1 && col == 0) || (row == 3 && col == 2));
+                else if (digit == 6) fill = (row == 0 || row == 2 || row == 4 || col == 0 || (row >= 2 && col == 2));
+                else if (digit == 7) fill = (row == 0 || col == 2);
+                else if (digit == 8) fill = true;
+                else if (digit == 9) fill = (row == 0 || row == 2 || col == 2 || (row <= 2 && col == 0));
+                
+                if (fill) {
+                    SDL_Rect digitRect = { dx + col * scale * 2, y + row * scale * 2, scale * 2, scale * 2 };
+                    SDL_RenderFillRect(m_renderer, &digitRect);
+                }
+            }
+        }
+    }
+}
+
+void Game::saveHighScores() {
+    std::ofstream file("highscores.txt");
+    if (file.is_open()) {
+        for (int score : m_highScores) {
+            file << score << std::endl;
+        }
+        file.close();
+    }
+}
+
+void Game::loadHighScores() {
+    std::ifstream file("highscores.txt");
+    if (file.is_open()) {
+        int score;
+        while (file >> score && m_highScores.size() < 10) {
+            m_highScores.push_back(score);
+        }
+        file.close();
+    }
+    
+    if (!m_highScores.empty()) {
+        m_highScore = m_highScores[0];
+    }
+}
+
+void Game::addHighScore(int score) {
+    m_highScores.push_back(score);
+    std::sort(m_highScores.begin(), m_highScores.end(), std::greater<int>());
+    
+    // 상위 10개만 유지
+    if (m_highScores.size() > 10) {
+        m_highScores.resize(10);
+    }
+    
+    if (!m_highScores.empty()) {
+        m_highScore = m_highScores[0];
+    }
+    
+    saveHighScores();
 }

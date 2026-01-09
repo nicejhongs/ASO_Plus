@@ -181,8 +181,26 @@ void Game::checkPlayerEnemyCollision() {
             enemyIt = m_enemies.erase(enemyIt);
             m_lives--;
             
+            // 폭발음 재생 (낮은 주파수, 긴 지속시간)
+            #ifdef _WIN32
+            Beep(300, 200); // 300Hz, 200ms
+            #endif
+            
             // 생명이 0이 되면 게임 오버 (리셋)
             if (m_lives <= 0) {
+                // 화면을 빨간색으로 플래시 (폭발 효과)
+                SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 255);
+                SDL_RenderClear(m_renderer);
+                SDL_RenderPresent(m_renderer);
+                SDL_Delay(300); // 0.3초 대기
+                
+                // 화면을 검은색으로 지우기
+                SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+                SDL_RenderClear(m_renderer);
+                SDL_RenderPresent(m_renderer);
+                SDL_Delay(200); // 0.2초 대기
+                
+                // 게임 리셋
                 m_lives = 3;
                 m_score = 0;
                 m_enemies.clear();

@@ -1,6 +1,11 @@
 #include "Game.h"
 #include <cstdlib>
 #include <ctime>
+#include <cmath>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 Game::Game() 
     : m_window(nullptr)
@@ -75,6 +80,11 @@ void Game::handleEvents() {
                     Bullet::Owner::PLAYER
                 ));
                 m_player->resetShootTimer();
+                
+                // 발사 사운드 (Windows 비프음)
+                #ifdef _WIN32
+                Beep(800, 50); // 800Hz, 50ms
+                #endif
             }
         }
     }

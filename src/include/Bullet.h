@@ -7,8 +7,13 @@ public:
         PLAYER,
         ENEMY
     };
+    
+    enum class BulletType {
+        LASER,
+        MISSILE
+    };
 
-    Bullet(float x, float y, Owner owner);
+    Bullet(float x, float y, Owner owner, BulletType type = BulletType::LASER);
     ~Bullet();
 
     void update(float deltaTime);
@@ -19,6 +24,7 @@ public:
     float getWidth() const { return m_width; }
     float getHeight() const { return m_height; }
     Owner getOwner() const { return m_owner; }
+    BulletType getType() const { return m_type; }
 
     bool isOffScreen() const;
 
@@ -27,4 +33,5 @@ private:
     float m_width, m_height;
     float m_speed;
     Owner m_owner;
+    BulletType m_type;
 };

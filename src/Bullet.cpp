@@ -1,12 +1,13 @@
 #include "Bullet.h"
 
-Bullet::Bullet(float x, float y, Owner owner)
+Bullet::Bullet(float x, float y, Owner owner, BulletType type)
     : m_x(x)
     , m_y(y)
-    , m_width(5.0f)
-    , m_height(15.0f)
-    , m_speed(500.0f)
+    , m_width(type == BulletType::MISSILE ? 15.0f : 5.0f)
+    , m_height(type == BulletType::MISSILE ? 30.0f : 15.0f)
+    , m_speed(type == BulletType::MISSILE ? 600.0f : 500.0f)
     , m_owner(owner)
+    , m_type(type)
 {
 }
 
@@ -25,8 +26,13 @@ void Bullet::update(float deltaTime) {
 
 void Bullet::render(SDL_Renderer* renderer) {
     if (m_owner == Owner::PLAYER) {
-        // Player bullets are yellow
-        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        if (m_type == BulletType::MISSILE) {
+            // Missiles are red and thicker
+            SDL_SetRenderDrawColor(renderer, 255, 50, 50, 255);
+        } else {
+            // Lasers are yellow
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        }
     } else {
         // Enemy bullets are orange
         SDL_SetRenderDrawColor(renderer, 255, 150, 0, 255);

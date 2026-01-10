@@ -7,11 +7,24 @@ Player::Player(float x, float y)
     , m_width(80.0f)
     , m_height(80.0f)
     , m_speed(300.0f)
-    , m_shootCooldown(0.2f)
+    , m_shootCooldown(0.5f)  // Slower auto-fire
     , m_shootTimer(0.0f)
     , m_mouseX(x)
     , m_mouseY(y)
-    , m_missileCount(1)
+    , m_speedLevel(0)
+    , m_laserLevel(0)
+    , m_missileLevel(0)
+    , m_speedCount(0)
+    , m_laserCount(0)
+    , m_missileCount(0)
+    , m_energy(16)
+    , m_maxEnergy(16)
+    , m_keepSpeed(false)
+    , m_keepLaser(false)
+    , m_keepMissile(false)
+    , m_movementState(MovementState::STOP)
+    , m_lastY(y)
+    , m_lastX(x)
 {
 }
 
@@ -24,6 +37,10 @@ void Player::setMousePosition(float mouseX, float mouseY) {
 }
 
 void Player::update(float deltaTime) {
+    // Store last position to detect movement direction
+    float previousY = m_y;
+    float previousX = m_x;
+    
     // 플레이어 중심 계산
     float playerCenterX = m_x + m_width / 2;
     float playerCenterY = m_y + m_height / 2;
@@ -49,6 +66,33 @@ void Player::update(float deltaTime) {
         if (m_x < 0) m_x = 0;
         if (m_y < 0) m_y = 0;
     }
+    
+    // Update movement state based on position change
+    const float movementThreshold = 1.0f;
+    float deltaX = m_x - previousX;
+    float deltaY = m_y - previousY;
+    
+    // Prioritize horizontal movement over vertical
+    if (fabs(deltaX) > fabs(deltaY)) {
+        if (deltaX < -movementThreshold) {
+            m_movementState = MovementState::LEFT;  // Moving left
+        } else if (deltaX > movementThreshold) {
+            m_movementState = MovementState::RIGHT;  // Moving right
+        } else {
+            m_movementState = MovementState::STOP;
+        }
+    } else {
+        if (deltaY < -movementThreshold) {
+            m_movementState = MovementState::FORWARD;  // Moving up (forward in shooter games)
+        } else if (deltaY > movementThreshold) {
+            m_movementState = MovementState::BACKWARD;  // Moving down (backward)
+        } else {
+            m_movementState = MovementState::STOP;  // Not moving
+        }
+    }
+    
+    m_lastY = m_y;
+    m_lastX = m_x;
 
     // 발사 쿨다운 업데이트
     if (m_shootTimer > 0) {
@@ -99,16 +143,124 @@ void Player::resetShootTimer() {
     m_shootTimer = m_shootCooldown;
 }
 
+// Collection system - need 3 items to upgrade
+void Player::collectSpeed() {
+    m_speedCount++;
+    if (m_speedCount >= 3) {
+        upgradeSpeed();
+        m_speedCount = 0;
+    }
+}
+
+void Player::collectLaser() {
+    m_laserCount++;
+    if (m_laserCount >= 3) {
+        upgradeLaser();
+        m_laserCount = 0;
+    }
+}
+
+void Player::collectMissile() {
+    m_missileCount++;
+    if (m_missileCount >= 3) {
+        upgradeMissile();
+        m_missileCount = 0;
+    }
+}
+
+// Direct upgrade methods
 void Player::upgradeSpeed() {
-    m_speed += 50.0f;
-    if (m_speed > 500.0f) {
-        m_speed = 500.0f;  // Max speed
+    if (m_speedLevel < 3) {
+        m_speedLevel++;
+        m_speed = 300.0f + (m_speedLevel * 80.0f);  // 300, 380, 460, 540
+    }
+}
+
+void Player::upgradeLaser() {
+    if (m_laserLevel < 3) {
+        m_laserLevel++;
+        // Laser level affects bullet count in game logic
     }
 }
 
 void Player::upgradeMissile() {
-    m_missileCount++;
-    if (m_missileCount > 5) {
-        m_missileCount = 5;  // Max 5 bullets
+    if (m_missileLevel < 4) {
+        m_missileLevel++;
+        // Missile level affects ground attack in game logic
     }
+}
+
+// Downgrade methods
+void Player::downgradeSpeed() {
+    if (m_speedLevel > 0) {
+        m_speedLevel--;
+        m_speed = 300.0f + (m_speedLevel * 80.0f);
+    }
+    m_speedCount = 0;
+    m_keepSpeed = false;
+}
+
+void Player::downgradeLaser() {
+    if (m_laserLevel > 0) {
+        m_laserLevel--;
+    }
+    m_laserCount = 0;
+    m_keepLaser = false;
+}
+
+void Player::downgradeMissile() {
+    if (m_missileLevel > 0) {
+        m_missileLevel--;
+    }
+    m_missileCount = 0;
+    m_keepMissile = false;
+}
+
+// Energy system
+void Player::addEnergy(int amount) {
+    m_energy += amount;
+    if (m_energy > m_maxEnergy) {
+        m_energy = m_maxEnergy;
+    }
+}
+
+void Player::removeEnergy(int amount) {
+    m_energy -= amount;
+    if (m_energy < 0) {
+        m_energy = 0;
+    }
+}
+
+void Player::increaseMaxEnergy() {
+    if (m_maxEnergy < 24) {
+        m_maxEnergy++;
+        m_energy++;
+    }
+}
+
+// Take damage (returns true if player should explode)
+bool Player::takeDamage(int amount) {
+    removeEnergy(amount);
+    return (m_energy <= 0);
+}
+
+// Reset on death
+void Player::resetOnDeath() {
+    // Reset power levels unless kept
+    if (!m_keepSpeed) {
+        m_speedLevel = 0;
+        m_speedCount = 0;
+        m_speed = 300.0f;
+    }
+    if (!m_keepLaser) {
+        m_laserLevel = 0;
+        m_laserCount = 0;
+    }
+    if (!m_keepMissile) {
+        m_missileLevel = 0;
+        m_missileCount = 0;
+    }
+    
+    // Reset energy to half
+    m_energy = m_maxEnergy / 2;
 }

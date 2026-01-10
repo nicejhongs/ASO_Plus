@@ -9,6 +9,10 @@ Enemy::Enemy(float x, float y, bool isSpecial)
     , m_speed(150.0f)
     , m_isSpecial(isSpecial)
     , m_blinkTimer(0.0f)
+    , m_horizontalSpeed(50.0f)  // Horizontal movement speed
+    , m_movementTimer(0.0f)
+    , m_shootTimer(3.0f + (rand() % 3))  // Random initial delay 3-5 seconds
+    , m_shootCooldown(3.0f + (rand() % 3))  // Shoot every 3-5 seconds
 {
 }
 
@@ -19,8 +23,17 @@ void Enemy::update(float deltaTime) {
     // Move downward
     m_y += m_speed * deltaTime;
     
+    // Add horizontal sine wave movement
+    m_movementTimer += deltaTime;
+    m_x += m_horizontalSpeed * sin(m_movementTimer * 3.0f) * deltaTime;
+    
     if (m_isSpecial) {
         m_blinkTimer += deltaTime;
+    }
+    
+    // Update shoot timer
+    if (m_shootTimer > 0.0f) {
+        m_shootTimer -= deltaTime;
     }
 }
 
@@ -49,19 +62,8 @@ void Enemy::render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRe
             static_cast<int>(m_height)
         };
         
-        // Special enemy blinks
-        if (m_isSpecial) {
-            Uint8 alpha = static_cast<Uint8>(128 + 127 * sin(m_blinkTimer * 10));
-            SDL_SetTextureAlphaMod(texture, alpha);
-        }
-        
         // If srcRect is nullptr, use entire texture
         SDL_RenderCopy(renderer, texture, srcRect, &dstRect);
-        
-        // Reset alpha
-        if (m_isSpecial) {
-            SDL_SetTextureAlphaMod(texture, 255);
-        }
     } else {
         // Fallback: default rendering
         render(renderer);

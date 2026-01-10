@@ -23,6 +23,10 @@ public:
     float getHitboxHeight() const { return m_height * 0.4f; }
 
     bool isOffScreen() const;
+    
+    // Shooting
+    bool canShoot() const { return m_shootTimer <= 0.0f; }
+    void resetShootTimer() { m_shootTimer = m_shootCooldown; }
 
 private:
     float m_x, m_y;
@@ -30,4 +34,8 @@ private:
     float m_speed;
     bool m_isSpecial;
     float m_blinkTimer;
+    float m_horizontalSpeed;  // Horizontal movement speed
+    float m_movementTimer;    // Timer for sine wave movement
+    float m_shootTimer;       // Timer for shooting
+    float m_shootCooldown;    // Shoot cooldown (3-5 seconds)
 };

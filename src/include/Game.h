@@ -9,10 +9,12 @@
 #include "Player.h"
 #include "Enemy.h"
 #include "Bullet.h"
+#include "PowerUp.h"
 
 class Game {
 public:
     enum class GameState {
+        START_SCREEN,
         MENU,
         COUNTDOWN,
         PLAYING,
@@ -29,6 +31,8 @@ public:
     void clean();
 
     bool isRunning() const { return m_running; }
+    int getWindowWidth() const { int w; SDL_GetWindowSize(m_window, &w, nullptr); return w; }
+    int getWindowHeight() const { int h; SDL_GetWindowSize(m_window, nullptr, &h); return h; }
 
 private:
     SDL_Window* m_window;
@@ -39,9 +43,10 @@ private:
     std::unique_ptr<Player> m_player;
     std::vector<std::unique_ptr<Enemy>> m_enemies;
     std::vector<std::unique_ptr<Bullet>> m_bullets;
+    std::vector<std::unique_ptr<PowerUp>> m_powerUps;
 
     float m_enemySpawnTimer;
-    const float m_enemySpawnInterval = 2.0f; // 2초마다 적 생성
+    const float m_enemySpawnInterval = 2.0f;
     
     GameState m_gameState;
     float m_stateTimer;
@@ -53,23 +58,30 @@ private:
     
     Mix_Chunk* m_shootSound;
     Mix_Chunk* m_explosionSound;
-    Mix_Music* m_bgMusic;  // 배경음악
+    Mix_Music* m_bgMusic;  // Background music
     
-    SDL_Texture* m_backgroundTexture;  // 배경화면
-    float m_backgroundY1;  // 첫 번째 배경 위치
-    float m_backgroundY2;  // 두 번째 배경 위치
-    float m_backgroundScrollSpeed;  // 스크롤 속도
+    SDL_Texture* m_backgroundTexture;  // Background texture
+    float m_backgroundY1;  // First background position
+    float m_backgroundY2;  // Second background position
+    float m_backgroundScrollSpeed;  // Scroll speed
     
     SDL_Texture* m_playerTexture;  // ship_01.png
     SDL_Texture* m_enemyTexture;   // enemy_02.png
     
-    TTF_Font* m_titleFont;  // 타이틀 폰트
-    TTF_Font* m_uiFont;     // UI 폰트 (점수, 카운트다운)
-    TTF_Font* m_subtitleFont;  // 부제목 폰트
-    SDL_Texture* m_titleTexture;  // 타이틀 텍스처
+    TTF_Font* m_titleFont;  // Title font
+    TTF_Font* m_uiFont;     // UI font (score, countdown)
+    TTF_Font* m_subtitleFont;  // Subtitle font
+    SDL_Texture* m_titleTexture;  // Title texture
+    
+    SDL_Texture* m_startLogoTexture;  // Start logo texture
+    float m_blinkTimer;  // Blink timer
+    Uint8 m_fadeAlpha;  // Fade alpha value (0-255)
     
     void checkPlayerEnemyCollision();
+    void checkPowerUpCollection();
+    void dropPowerUp(float x, float y);
     void renderUI();
+    void renderStartScreen();
     void renderMenu();
     void renderCountdown();
     void renderGameOver();

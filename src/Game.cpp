@@ -9,7 +9,7 @@
 #include <windows.h>
 #endif
 
-// 실행 파일 경로를 기준으로 리소스 경로 생성
+// Generate resource path based on executable file path
 std::string getResourcePath(const std::string& filename) {
 #ifdef _WIN32
     char buffer[MAX_PATH];
@@ -28,7 +28,7 @@ Game::Game()
     , m_running(false)
     , m_mouseGrabbed(true)  // Locked by default
     , m_enemySpawnTimer(0.0f)
-    , m_gameState(GameState::MENU)
+    , m_gameState(GameState::START_SCREEN)
     , m_stateTimer(0.0f)
     , m_lives(3)
     , m_score(0)
@@ -38,14 +38,17 @@ Game::Game()
     , m_bgMusic(nullptr)
     , m_backgroundTexture(nullptr)
     , m_backgroundY1(0.0f)
-    , m_backgroundY2(-600.0f)  // 화면 높이만큼 위에
-    , m_backgroundScrollSpeed(50.0f)  // 픽셀/초
+    , m_backgroundY2(-960.0f)
+    , m_backgroundScrollSpeed(50.0f)
     , m_playerTexture(nullptr)
     , m_enemyTexture(nullptr)
     , m_titleFont(nullptr)
     , m_uiFont(nullptr)
     , m_subtitleFont(nullptr)
     , m_titleTexture(nullptr)
+    , m_startLogoTexture(nullptr)
+    , m_blinkTimer(0.0f)
+    , m_fadeAlpha(0)
 {
     loadHighScores();
 }
@@ -55,13 +58,13 @@ Game::~Game() {
 }
 
 bool Game::init(const char* title, int width, int height) {
-    // SDL 초기화
+    // SDL initialization
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        SDL_Log("SDL 초기화 실패: %s", SDL_GetError());
+        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
         return false;
     }
 
-    // 윈도우 생성
+    // Create window
     m_window = SDL_CreateWindow(
         title,
         SDL_WINDOWPOS_CENTERED,
@@ -71,68 +74,71 @@ bool Game::init(const char* title, int width, int height) {
     );
 
     if (!m_window) {
-        SDL_Log("윈도우 생성 실패: %s", SDL_GetError());
+        SDL_Log("Failed to create window: %s", SDL_GetError());
         return false;
     }
+    
+    // Update background positions based on actual window height
+    m_backgroundY2 = -static_cast<float>(height);
 
-    // 렌더러 생성
+    // Create renderer
     m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED);
     if (!m_renderer) {
-        SDL_Log("렌더러 생성 실패: %s", SDL_GetError());
+        SDL_Log("Failed to create renderer: %s", SDL_GetError());
         return false;
     }
     
-    // SDL_ttf 초기화
+    // Initialize SDL_ttf
     if (TTF_Init() == -1) {
-        SDL_Log("TTF 초기화 실패: %s", TTF_GetError());
-        // 계속 진행 (폰트 없이)
+        SDL_Log("Failed to initialize TTF: %s", TTF_GetError());
+        // Continue without fonts
     }
 
-    // 랜덤 시드 초기화
+    // Initialize random seed
     srand(static_cast<unsigned>(time(nullptr)));
 
-    // SDL_mixer 초기화
+    // Initialize SDL_mixer
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        SDL_Log("SDL_mixer 초기화 실패: %s", Mix_GetError());
-        // 계속 진행 (사운드 없이)
+        SDL_Log("Failed to initialize SDL_mixer: %s", Mix_GetError());
+        // Continue without sound
     }
     
-    // 사운드 파일 로드 (WAV 형식, Mix_Chunk 사용)
+    // Load sound files (WAV format, Mix_Chunk)
     std::string shootPath = getResourcePath("shot_01.wav");
     m_shootSound = Mix_LoadWAV(shootPath.c_str());
     if (!m_shootSound) {
-        SDL_Log("INFO: shot_01.wav 로드 실패: %s (path: %s)", Mix_GetError(), shootPath.c_str());
+        SDL_Log("INFO: Failed to load shot_01.wav: %s (path: %s)", Mix_GetError(), shootPath.c_str());
     } else {
-        SDL_Log("INFO: shot_01.wav 로드 성공: %s", shootPath.c_str());
+        SDL_Log("INFO: Loaded shot_01.wav: %s", shootPath.c_str());
     }
     
     std::string explosionPath = getResourcePath("exlposion_01.wav");
     m_explosionSound = Mix_LoadWAV(explosionPath.c_str());
     if (!m_explosionSound) {
-        SDL_Log("INFO: exlposion_01.wav 로드 실패: %s (path: %s)", Mix_GetError(), explosionPath.c_str());
+        SDL_Log("INFO: Failed to load exlposion_01.wav: %s (path: %s)", Mix_GetError(), explosionPath.c_str());
     } else {
-        SDL_Log("INFO: exlposion_01.wav 로드 성공: %s", explosionPath.c_str());
+        SDL_Log("INFO: Loaded exlposion_01.wav: %s", explosionPath.c_str());
     }
     
-    // 배경음악 로드 (WAV 형식으로 Mix_Music 사용)
+    // Load background music (WAV format, Mix_Music)
     std::string bgMusicPath = getResourcePath("aso_plus_opening.wav");
     m_bgMusic = Mix_LoadMUS(bgMusicPath.c_str());
     if (!m_bgMusic) {
-        SDL_Log("INFO: aso_plus_opening.wav 로드 실패: %s (path: %s)", Mix_GetError(), bgMusicPath.c_str());
+        SDL_Log("INFO: Failed to load aso_plus_opening.wav: %s (path: %s)", Mix_GetError(), bgMusicPath.c_str());
     } else {
-        SDL_Log("INFO: aso_plus_opening.wav 로드 성공: %s", bgMusicPath.c_str());
-        // 배경음악 무한 반복 재생 (-1 = loop)
+        SDL_Log("INFO: Loaded aso_plus_opening.wav: %s", bgMusicPath.c_str());
+        // Play background music infinitely (-1 = loop)
         Mix_PlayMusic(m_bgMusic, -1);
-        Mix_VolumeMusic(64); // 볼륨 50% (0-128)
+        Mix_VolumeMusic(64); // Volume 50% (0-128)
     }
 
-    // 스프라이트 이미지 로드 (PNG 투명도 지원)
+    // Load sprite images (PNG with transparency support)
     int imgFlags = IMG_INIT_PNG;
     if (!(IMG_Init(imgFlags) & imgFlags)) {
-        SDL_Log("SDL_image 초기화 실패: %s", IMG_GetError());
+        SDL_Log("Failed to initialize SDL_image: %s", IMG_GetError());
     }
     
-    // 배경화면 로드 (background.png)
+    // Load background image (background.png)
     std::string bgPath = getResourcePath("background.png");
     SDL_Surface* bgSurface = IMG_Load(bgPath.c_str());
     if (bgSurface) {
@@ -140,78 +146,93 @@ bool Game::init(const char* title, int width, int height) {
         SDL_FreeSurface(bgSurface);
         
         if (m_backgroundTexture) {
-            SDL_Log("INFO: background.png 로드 성공: %s", bgPath.c_str());
+            SDL_Log("INFO: Loaded background.png: %s", bgPath.c_str());
         }
     } else {
-        SDL_Log("INFO: background.png 로드 실패: %s (path: %s)", IMG_GetError(), bgPath.c_str());
+        SDL_Log("INFO: Failed to load background.png: %s (path: %s)", IMG_GetError(), bgPath.c_str());
     }
     
-    // 플레이어 스프라이트 로드 (ship_01.png)
+    // Load player sprite (ship_01.png)
     std::string playerSpritePath = getResourcePath("ship_01.png");
     SDL_Surface* playerSurface = IMG_Load(playerSpritePath.c_str());
     if (playerSurface) {
-        // 흰색 배경을 투명으로 처리 (RGB: 255, 255, 255)
+        // Set white background as transparent (RGB: 255, 255, 255)
         SDL_SetColorKey(playerSurface, SDL_TRUE, SDL_MapRGB(playerSurface->format, 255, 255, 255));
         
         m_playerTexture = SDL_CreateTextureFromSurface(m_renderer, playerSurface);
         SDL_FreeSurface(playerSurface);
         
         if (m_playerTexture) {
-            SDL_Log("INFO: ship_01.png 로드 성공: %s", playerSpritePath.c_str());
+            SDL_Log("INFO: Loaded ship_01.png: %s", playerSpritePath.c_str());
             SDL_SetTextureBlendMode(m_playerTexture, SDL_BLENDMODE_BLEND);
         }
     } else {
-        SDL_Log("INFO: ship_01.png 로드 실패: %s (path: %s)", IMG_GetError(), playerSpritePath.c_str());
+        SDL_Log("INFO: Failed to load ship_01.png: %s (path: %s)", IMG_GetError(), playerSpritePath.c_str());
     }
     
-    // 적 스프라이트 로드 (enemy_02.png)
+    // Load enemy sprite (enemy_02.png)
     std::string enemySpritePath = getResourcePath("enemy_02.png");
     SDL_Surface* enemySurface = IMG_Load(enemySpritePath.c_str());
     if (enemySurface) {
-        // 흰색 배경을 투명으로 처리 (RGB: 255, 255, 255)
+        // Set white background as transparent (RGB: 255, 255, 255)
         SDL_SetColorKey(enemySurface, SDL_TRUE, SDL_MapRGB(enemySurface->format, 255, 255, 255));
         
         m_enemyTexture = SDL_CreateTextureFromSurface(m_renderer, enemySurface);
         SDL_FreeSurface(enemySurface);
         
         if (m_enemyTexture) {
-            SDL_Log("INFO: enemy_02.png 로드 성공: %s", enemySpritePath.c_str());
+            SDL_Log("INFO: Loaded enemy_02.png: %s", enemySpritePath.c_str());
             SDL_SetTextureBlendMode(m_enemyTexture, SDL_BLENDMODE_BLEND);
         }
     } else {
-        SDL_Log("INFO: enemy_02.png 로드 실패: %s (path: %s)", IMG_GetError(), enemySpritePath.c_str());
+        SDL_Log("INFO: Failed to load enemy_02.png: %s (path: %s)", IMG_GetError(), enemySpritePath.c_str());
     }
     
-    // 폰트 로드 (Windows 기본 폰트 사용)
+    // Load font (Windows default font)
     m_titleFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 72);
     if (!m_titleFont) {
-        SDL_Log("INFO: 폰트 로드 실패: %s", TTF_GetError());
+        SDL_Log("INFO: Failed to load font: %s", TTF_GetError());
     } else {
-        // "ASO PLUS" 텍스트 렌더링
-        SDL_Color titleColor = {255, 255, 255, 255};  // 흰색
+        // Render "ASO PLUS" text
+        SDL_Color titleColor = {255, 255, 255, 255};  // White
         SDL_Surface* titleSurface = TTF_RenderText_Blended(m_titleFont, "ASO PLUS", titleColor);
         if (titleSurface) {
             m_titleTexture = SDL_CreateTextureFromSurface(m_renderer, titleSurface);
             SDL_FreeSurface(titleSurface);
             if (m_titleTexture) {
-                SDL_Log("INFO: 타이틀 텍스트 생성 성공");
+                SDL_Log("INFO: Created title text");
             }
         }
     }
     
-    // UI 폰트 로드 (점수, 카운트다운용)
+    // Load UI font (for score, countdown)
     m_uiFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 48);
     if (!m_uiFont) {
-        SDL_Log("INFO: UI 폰트 로드 실패: %s", TTF_GetError());
+        SDL_Log("INFO: Failed to load UI font: %s", TTF_GetError());
     }
     
-    // 부제목 폰트 로드
+    // Load subtitle font
     m_subtitleFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 32);
     if (!m_subtitleFont) {
-        SDL_Log("INFO: 부제목 폰트 로드 실패: %s", TTF_GetError());
+        SDL_Log("INFO: Failed to load subtitle font: %s", TTF_GetError());
+    }
+    
+    // Load start logo image (start_logo.png)
+    std::string startLogoPath = getResourcePath("start_logo.png");
+    SDL_Surface* startLogoSurface = IMG_Load(startLogoPath.c_str());
+    if (startLogoSurface) {
+        m_startLogoTexture = SDL_CreateTextureFromSurface(m_renderer, startLogoSurface);
+        SDL_FreeSurface(startLogoSurface);
+        
+        if (m_startLogoTexture) {
+            SDL_Log("INFO: Loaded start_logo.png: %s", startLogoPath.c_str());
+            SDL_SetTextureBlendMode(m_startLogoTexture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: Failed to load start_logo.png: %s (path: %s)", IMG_GetError(), startLogoPath.c_str());
     }
 
-    // 플레이어 생성 (화면 중앙 하단)
+    // Create player (centered at bottom of screen)
     m_player = std::make_unique<Player>(width / 2.0f, height - 80.0f);
     
     // Confine mouse to window
@@ -235,6 +256,11 @@ void Game::handleEvents() {
                 SDL_SetWindowGrab(m_window, m_mouseGrabbed ? SDL_TRUE : SDL_FALSE);
                 SDL_Log("INFO: Mouse grab %s", m_mouseGrabbed ? "enabled" : "disabled");
             }
+            // Any key to start from START_SCREEN - transition to MENU with fade
+            else if (m_gameState == GameState::START_SCREEN) {
+                m_gameState = GameState::MENU;
+                m_fadeAlpha = 0;
+            }
             // Any key to start from MENU or GAME_OVER
             else if (m_gameState == GameState::MENU || m_gameState == GameState::GAME_OVER) {
                 m_gameState = GameState::COUNTDOWN;
@@ -257,8 +283,13 @@ void Game::handleEvents() {
         }
         else if (event.type == SDL_MOUSEBUTTONDOWN) {
             if (event.button.button == SDL_BUTTON_LEFT) {
-                // MENU 또는 GAME_OVER 상태에서 클릭하면 카운트다운 시작
-                if (m_gameState == GameState::MENU || m_gameState == GameState::GAME_OVER) {
+                // Click on START_SCREEN to transition to MENU
+                if (m_gameState == GameState::START_SCREEN) {
+                    m_gameState = GameState::MENU;
+                    m_fadeAlpha = 0;
+                }
+                // Click on MENU or GAME_OVER to start countdown
+                else if (m_gameState == GameState::MENU || m_gameState == GameState::GAME_OVER) {
                     m_gameState = GameState::COUNTDOWN;
                     m_stateTimer = 5.0f;
                     m_lives = 3;
@@ -271,18 +302,31 @@ void Game::handleEvents() {
                 }
                 // PLAYING 상태에서는 총알 발사
                 else if (m_gameState == GameState::PLAYING && m_player->canShoot()) {
-                    m_bullets.push_back(std::make_unique<Bullet>(
-                        m_player->getX() + m_player->getWidth() / 2,
-                        m_player->getY(),
-                        Bullet::Owner::PLAYER
-                    ));
+                    int missileCount = m_player->getMissileCount();
+                    float playerCenterX = m_player->getX() + m_player->getWidth() / 2;
+                    
+                    // Fire multiple bullets based on upgrade level
+                    if (missileCount == 1) {
+                        m_bullets.push_back(std::make_unique<Bullet>(
+                            playerCenterX, m_player->getY(), Bullet::Owner::PLAYER
+                        ));
+                    } else {
+                        float spacing = 15.0f;
+                        float startX = playerCenterX - (missileCount - 1) * spacing / 2;
+                        for (int i = 0; i < missileCount; i++) {
+                            m_bullets.push_back(std::make_unique<Bullet>(
+                                startX + i * spacing, m_player->getY(), Bullet::Owner::PLAYER
+                            ));
+                        }
+                    }
+                    
                     m_player->resetShootTimer();
                     
-                    // 발사 사운드 재생
+                    // Play shoot sound
                     if (m_shootSound) {
                         Mix_PlayChannel(-1, m_shootSound, 0);
                     } else {
-                        // 폴백: Windows 비프음
+                        // Fallback: Windows beep sound
                         #ifdef _WIN32
                         Beep(800, 50);
                         #endif
@@ -295,8 +339,17 @@ void Game::handleEvents() {
 
 void Game::update(float deltaTime) {
     // 게임 상태에 따른 처리
-    if (m_gameState == GameState::MENU) {
-        // 메뉴 상태에서는 아무것도 업데이트하지 않음
+    if (m_gameState == GameState::START_SCREEN) {
+        // 깜빡임 타이머 업데이트
+        m_blinkTimer += deltaTime;
+        return;
+    }
+    else if (m_gameState == GameState::MENU) {
+        // 페이드 인 효과
+        if (m_fadeAlpha < 255) {
+            float newAlpha = m_fadeAlpha + deltaTime * 300.0f;
+            m_fadeAlpha = static_cast<Uint8>(newAlpha > 255.0f ? 255 : newAlpha);
+        }
         return;
     }
     else if (m_gameState == GameState::COUNTDOWN) {
@@ -307,48 +360,60 @@ void Game::update(float deltaTime) {
         return;
     }
     else if (m_gameState == GameState::GAME_OVER) {
-        // 게임 오버 상태에서는 아무것도 업데이트하지 않음
+        // Do nothing in game over state
         return;
     }
     
-    // PLAYING 상태에서만 게임 로직 실행
-    // 배경 스크롤
+    // Execute game logic only in PLAYING state
+    // Background scroll
+    m_backgroundY1 += m_backgroundScrollSpeed * deltaTime;
+    m_backgroundY2 += m_backgroundScrollSpeed * deltaTime;
+    int windowHeight;
+    SDL_GetWindowSize(m_window, nullptr, &windowHeight);
+    
     m_backgroundY1 += m_backgroundScrollSpeed * deltaTime;
     m_backgroundY2 += m_backgroundScrollSpeed * deltaTime;
     
-    // 배경이 화면 밖으로 나가면 다시 위로
-    if (m_backgroundY1 >= 600) {
-        m_backgroundY1 = m_backgroundY2 - 600;
+    // Reset background position when it goes off screen
+    if (m_backgroundY1 >= windowHeight) {
+        m_backgroundY1 = m_backgroundY2 - windowHeight;
     }
-    if (m_backgroundY2 >= 600) {
-        m_backgroundY2 = m_backgroundY1 - 600;
+    if (m_backgroundY2 >= windowHeight) {
+        m_backgroundY2 = m_backgroundY1 - windowHeight;
     }
     
-    // 플레이어 업데이트
+    // Update player
     m_player->update(deltaTime);
+    
+    // Check player screen boundaries
+    int windowWidth;
+    SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+    m_player->clampToScreen(windowWidth, windowHeight);
 
-    // 적 생성
+    // Spawn enemies
     m_enemySpawnTimer += deltaTime;
     if (m_enemySpawnTimer >= m_enemySpawnInterval) {
         int windowWidth, windowHeight;
         SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
         
         float enemyX = static_cast<float>(rand() % (windowWidth - 40));
-        m_enemies.push_back(std::make_unique<Enemy>(enemyX, -40.0f));
+        // 10% chance to spawn special enemy
+        bool isSpecial = (rand() % 10) == 0;
+        m_enemies.push_back(std::make_unique<Enemy>(enemyX, -40.0f, isSpecial));
         m_enemySpawnTimer = 0.0f;
     }
 
-    // 적 업데이트
+    // Update enemies
     for (auto& enemy : m_enemies) {
         enemy->update(deltaTime);
     }
 
-    // 총알 업데이트
+    // Update bullets
     for (auto& bullet : m_bullets) {
         bullet->update(deltaTime);
     }
 
-    // 화면 밖으로 나간 적 제거
+    // Remove enemies that went off screen
     m_enemies.erase(
         std::remove_if(m_enemies.begin(), m_enemies.end(),
             [](const std::unique_ptr<Enemy>& enemy) {
@@ -357,7 +422,7 @@ void Game::update(float deltaTime) {
         m_enemies.end()
     );
 
-    // 화면 밖으로 나간 총알 제거
+    // Remove bullets that went off screen
     m_bullets.erase(
         std::remove_if(m_bullets.begin(), m_bullets.end(),
             [](const std::unique_ptr<Bullet>& bullet) {
@@ -366,27 +431,37 @@ void Game::update(float deltaTime) {
         m_bullets.end()
     );
 
-    // 충돌 감지 (간단한 AABB)
+    // Collision detection (simple AABB)
     for (auto bulletIt = m_bullets.begin(); bulletIt != m_bullets.end();) {
         bool bulletRemoved = false;
         
         if ((*bulletIt)->getOwner() == Bullet::Owner::PLAYER) {
             for (auto enemyIt = m_enemies.begin(); enemyIt != m_enemies.end();) {
-                // 충돌 체크
+                // Check collision
                 if ((*bulletIt)->getX() < (*enemyIt)->getX() + (*enemyIt)->getWidth() &&
                     (*bulletIt)->getX() + (*bulletIt)->getWidth() > (*enemyIt)->getX() &&
                     (*bulletIt)->getY() < (*enemyIt)->getY() + (*enemyIt)->getHeight() &&
                     (*bulletIt)->getY() + (*bulletIt)->getHeight() > (*enemyIt)->getY()) {
                     
-                    // 충돌 발생: 둘 다 제거 및 점수 증가
-                    m_score += 10;
+                    // Check if special enemy - drop power-up
+                    bool wasSpecial = (*enemyIt)->isSpecial();
+                    float enemyX = (*enemyIt)->getX();
+                    float enemyY = (*enemyIt)->getY();
+                    
+                    // Collision occurred: remove both and increase score
+                    m_score += wasSpecial ? 50 : 10;
                     if (m_score > m_highScore) {
                         m_highScore = m_score;
                     }
                     
-                    // 폭발음 재생
+                    // Play explosion sound
                     if (m_explosionSound) {
                         Mix_PlayChannel(-1, m_explosionSound, 0);
+                    }
+                    
+                    // Drop power-up if special
+                    if (wasSpecial) {
+                        dropPowerUp(enemyX + (*enemyIt)->getWidth() / 2, enemyY);
                     }
                     
                     enemyIt = m_enemies.erase(enemyIt);
@@ -404,58 +479,86 @@ void Game::update(float deltaTime) {
         }
     }
     
+    // 파워업 업데이트
+    for (auto& powerUp : m_powerUps) {
+        powerUp->update(deltaTime);
+    }
+    
+    // 화면 밖으로 나간 파워업 제거
+    m_powerUps.erase(
+        std::remove_if(m_powerUps.begin(), m_powerUps.end(),
+            [](const std::unique_ptr<PowerUp>& powerUp) {
+                return powerUp->isOffScreen();
+            }),
+        m_powerUps.end()
+    );
+    
     // 플레이어와 적 충돌 체크
     checkPlayerEnemyCollision();
+    
+    // 파워업 수집 체크
+    checkPowerUpCollection();
 }
 
 void Game::checkPlayerEnemyCollision() {
     for (auto enemyIt = m_enemies.begin(); enemyIt != m_enemies.end();) {
-        // 플레이어와 적의 충돌 체크
-        if (m_player->getX() < (*enemyIt)->getX() + (*enemyIt)->getWidth() &&
-            m_player->getX() + m_player->getWidth() > (*enemyIt)->getX() &&
-            m_player->getY() < (*enemyIt)->getY() + (*enemyIt)->getHeight() &&
-            m_player->getY() + m_player->getHeight() > (*enemyIt)->getY()) {
+        // Use hitbox instead of full sprite for more accurate collision
+        float playerLeft = m_player->getHitboxX();
+        float playerRight = playerLeft + m_player->getHitboxWidth();
+        float playerTop = m_player->getHitboxY();
+        float playerBottom = playerTop + m_player->getHitboxHeight();
+        
+        float enemyLeft = (*enemyIt)->getHitboxX();
+        float enemyRight = enemyLeft + (*enemyIt)->getHitboxWidth();
+        float enemyTop = (*enemyIt)->getHitboxY();
+        float enemyBottom = enemyTop + (*enemyIt)->getHitboxHeight();
+        
+        // Check collision between hitboxes
+        if (playerLeft < enemyRight &&
+            playerRight > enemyLeft &&
+            playerTop < enemyBottom &&
+            playerBottom > enemyTop) {
             
-            // 충돌 발생: 적 제거, 생명 감소
+            // Collision occurred: remove enemy, decrease life
             enemyIt = m_enemies.erase(enemyIt);
             m_lives--;
             
-            // 폭발음 재생
+            // Play explosion sound
             if (m_explosionSound) {
                 Mix_PlayChannel(-1, m_explosionSound, 0);
             } else {
-                // 폴백: Windows 비프음
+                // Fallback: Windows beep sound
                 #ifdef _WIN32
                 Beep(300, 200);
                 #endif
             }
             
-            // 생명이 0이 되면 게임 오버
+            // If lives reach 0, game over
             if (m_lives <= 0) {
-                // 화면을 빨간색으로 플래시 (폭발 효과)
+                // Flash screen red (explosion effect)
                 SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 255);
                 SDL_RenderClear(m_renderer);
                 SDL_RenderPresent(m_renderer);
-                SDL_Delay(300); // 0.3초 대기
+                SDL_Delay(300); // Wait 0.3 seconds
                 
-                // 화면을 검은색으로 지우기
+                // Clear screen to black
                 SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
                 SDL_RenderClear(m_renderer);
                 SDL_RenderPresent(m_renderer);
-                SDL_Delay(200); // 0.2초 대기
+                SDL_Delay(200); // Wait 0.2 seconds
                 
-                // 최고 점수 저장
+                // Save high score
                 addHighScore(m_score);
                 
-                // 게임 오버 상태로 전환
+                // Transition to game over state
                 m_gameState = GameState::GAME_OVER;
                 m_enemies.clear();
                 m_bullets.clear();
             }
             else {
-                // 생명이 남아있으면 카운트다운 후 재시작
+                // If lives remain, restart after countdown
                 m_gameState = GameState::COUNTDOWN;
-                m_stateTimer = 3.0f; // 3초 카운트다운
+                m_stateTimer = 3.0f; // 3 second countdown
                 m_enemies.clear();
                 m_bullets.clear();
                 int windowWidth, windowHeight;
@@ -469,34 +572,39 @@ void Game::checkPlayerEnemyCollision() {
 }
 
 void Game::render() {
-    // 화면 클리어 (검은색)
+    // Clear screen (black)
     SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
     SDL_RenderClear(m_renderer);
     
-    // 배경 그리기 (가장 먼저)
+    // Draw background (first)
     if (m_backgroundTexture) {
-        SDL_Rect bg1 = {0, static_cast<int>(m_backgroundY1), 800, 600};
-        SDL_Rect bg2 = {0, static_cast<int>(m_backgroundY2), 800, 600};
+        int windowWidth, windowHeight;
+        SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+        SDL_Rect bg1 = {0, static_cast<int>(m_backgroundY1), windowWidth, windowHeight};
+        SDL_Rect bg2 = {0, static_cast<int>(m_backgroundY2), windowWidth, windowHeight};
         SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg1);
         SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg2);
     }
 
-    // 게임 상태에 따른 렌더링
-    if (m_gameState == GameState::MENU) {
+    // Render based on game state
+    if (m_gameState == GameState::START_SCREEN) {
+        renderStartScreen();
+    }
+    else if (m_gameState == GameState::MENU) {
         renderMenu();
     }
     else if (m_gameState == GameState::COUNTDOWN) {
         renderCountdown();
     }
     else if (m_gameState == GameState::PLAYING) {
-        // 플레이어 렌더링 (단일 텍스처 사용)
+        // Render player (using single texture)
         if (m_playerTexture) {
             m_player->render(m_renderer, m_playerTexture, nullptr);
         } else {
             m_player->render(m_renderer);
         }
 
-        // 적 렌더링 (단일 텍스처 사용)
+        // Render enemies (using single texture)
         for (auto& enemy : m_enemies) {
             if (m_enemyTexture) {
                 enemy->render(m_renderer, m_enemyTexture, nullptr);
@@ -505,27 +613,32 @@ void Game::render() {
             }
         }
 
-        // 총알 렌더링
+        // Render bullets
         for (auto& bullet : m_bullets) {
             bullet->render(m_renderer);
         }
         
-        // UI 렌더링
+        // Render power-ups
+        for (auto& powerUp : m_powerUps) {
+            powerUp->render(m_renderer);
+        }
+        
+        // Render UI
         renderUI();
     }
     else if (m_gameState == GameState::GAME_OVER) {
         renderGameOver();
     }
 
-    // 화면에 표시
+    // Present to screen
     SDL_RenderPresent(m_renderer);
 }
 
 void Game::renderUI() {
     if (!m_uiFont) return;
     
-    // 왼쪽 위: 점수 표시
-    SDL_Color scoreColor = {255, 255, 255, 255};  // 흰색
+    // Top left: Display score
+    SDL_Color scoreColor = {255, 255, 255, 255};  // White
     std::string scoreText = "SCORE: " + std::to_string(m_score);
     SDL_Surface* scoreSurface = TTF_RenderText_Blended(m_uiFont, scoreText.c_str(), scoreColor);
     if (scoreSurface) {
@@ -538,28 +651,32 @@ void Game::renderUI() {
         SDL_FreeSurface(scoreSurface);
     }
     
-    // 위쪽 가운데: 최고 점수 표시
-    SDL_Color highScoreColor = {255, 215, 0, 255}; // 금색
+    // Top center: Display high score
+    SDL_Color highScoreColor = {255, 215, 0, 255}; // Gold
     std::string highScoreText = "HI: " + std::to_string(m_highScore);
     SDL_Surface* highScoreSurface = TTF_RenderText_Blended(m_uiFont, highScoreText.c_str(), highScoreColor);
     if (highScoreSurface) {
         SDL_Texture* highScoreTexture = SDL_CreateTextureFromSurface(m_renderer, highScoreSurface);
         if (highScoreTexture) {
-            SDL_Rect highScoreRect = {(800 - highScoreSurface->w) / 2, 10, highScoreSurface->w, highScoreSurface->h};
+            int windowWidth;
+            SDL_GetWindowSize(m_window, &windowWidth, nullptr);
+            SDL_Rect highScoreRect = {(windowWidth - highScoreSurface->w) / 2, 10, highScoreSurface->w, highScoreSurface->h};
             SDL_RenderCopy(m_renderer, highScoreTexture, nullptr, &highScoreRect);
             SDL_DestroyTexture(highScoreTexture);
         }
         SDL_FreeSurface(highScoreSurface);
     }
     
-    // 오른쪽 위: 남은 생명 표시
+    // Top right: Display remaining lives
     SDL_Color livesColor = {0, 150, 255, 255};
     std::string livesText = "LIVES: " + std::to_string(m_lives);
     SDL_Surface* livesSurface = TTF_RenderText_Blended(m_uiFont, livesText.c_str(), livesColor);
     if (livesSurface) {
         SDL_Texture* livesTexture = SDL_CreateTextureFromSurface(m_renderer, livesSurface);
         if (livesTexture) {
-            SDL_Rect livesRect = {800 - livesSurface->w - 10, 10, livesSurface->w, livesSurface->h};
+            int windowWidth;
+            SDL_GetWindowSize(m_window, &windowWidth, nullptr);
+            SDL_Rect livesRect = {windowWidth - livesSurface->w - 10, 10, livesSurface->w, livesSurface->h};
             SDL_RenderCopy(m_renderer, livesTexture, nullptr, &livesRect);
             SDL_DestroyTexture(livesTexture);
         }
@@ -568,7 +685,7 @@ void Game::renderUI() {
 }
 
 void Game::clean() {
-    // 사운드 해제
+    // Release sounds
     if (m_shootSound) {
         Mix_FreeChunk(m_shootSound);
         m_shootSound = nullptr;
@@ -585,7 +702,7 @@ void Game::clean() {
     
     Mix_CloseAudio();
     
-    // 텍스처 해제
+    // Release textures
     if (m_backgroundTexture) {
         SDL_DestroyTexture(m_backgroundTexture);
         m_backgroundTexture = nullptr;
@@ -602,8 +719,12 @@ void Game::clean() {
         SDL_DestroyTexture(m_titleTexture);
         m_titleTexture = nullptr;
     }
+    if (m_startLogoTexture) {
+        SDL_DestroyTexture(m_startLogoTexture);
+        m_startLogoTexture = nullptr;
+    }
     
-    // 폰트 해제
+    // Release fonts
     if (m_titleFont) {
         TTF_CloseFont(m_titleFont);
         m_titleFont = nullptr;
@@ -632,13 +753,60 @@ void Game::clean() {
     SDL_Quit();
 }
 
+void Game::renderStartScreen() {
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+    
+    // Black background
+    SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+    SDL_RenderClear(m_renderer);
+    
+    // Display start_logo.png (fullscreen or centered)
+    if (m_startLogoTexture) {
+        int logoW, logoH;
+        SDL_QueryTexture(m_startLogoTexture, nullptr, nullptr, &logoW, &logoH);
+        
+        // Fit to fullscreen
+        SDL_Rect logoRect = {0, 0, windowWidth, windowHeight};
+        SDL_RenderCopy(m_renderer, m_startLogoTexture, nullptr, &logoRect);
+    }
+    
+    // "Press Button to start" 깜빡이는 텍스트
+    if (m_subtitleFont) {
+        // 0.5초마다 깜빡임
+        bool visible = (static_cast<int>(m_blinkTimer * 2) % 2) == 0;
+        
+        if (visible) {
+            SDL_Color textColor = {255, 255, 255, 255};  // 흰색
+            SDL_Surface* textSurface = TTF_RenderText_Blended(m_subtitleFont, "Press Button to start", textColor);
+            if (textSurface) {
+                SDL_Texture* textTexture = SDL_CreateTextureFromSurface(m_renderer, textSurface);
+                if (textTexture) {
+                    SDL_Rect textRect = {
+                        (windowWidth - textSurface->w) / 2,
+                        windowHeight - 100,  // Bottom of screen
+                        textSurface->w,
+                        textSurface->h
+                    };
+                    SDL_RenderCopy(m_renderer, textTexture, nullptr, &textRect);
+                    SDL_DestroyTexture(textTexture);
+                }
+                SDL_FreeSurface(textSurface);
+            }
+        }
+    }
+}
+
 void Game::renderMenu() {
-    // "ASO PLUS" 타이틀 표시
+    // Apply alpha value for fade-in effect
+    // Display "ASO PLUS" title
     if (m_titleTexture) {
-        int textW, textH;
+        int textW, textH, windowWidth;
         SDL_QueryTexture(m_titleTexture, nullptr, nullptr, &textW, &textH);
+        SDL_GetWindowSize(m_window, &windowWidth, nullptr);
+        SDL_SetTextureAlphaMod(m_titleTexture, m_fadeAlpha);
         SDL_Rect titleRect = {
-            (800 - textW) / 2,  // 중앙 정렬
+            (windowWidth - textW) / 2,
             100,
             textW,
             textH
@@ -646,25 +814,30 @@ void Game::renderMenu() {
         SDL_RenderCopy(m_renderer, m_titleTexture, nullptr, &titleRect);
     } else {
         // 폰트가 없을 경우 폴백: 간단한 박스
+        int windowWidth;
+        SDL_GetWindowSize(m_window, &windowWidth, nullptr);
         SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-        SDL_Rect titleRect = { 250, 150, 300, 50 };
+        SDL_Rect titleRect = { windowWidth / 2 - 150, 150, 300, 50 };
         SDL_RenderDrawRect(m_renderer, &titleRect);
         
         for (int i = 0; i < 8; i++) {
-            SDL_Rect letterRect = { 280 + i * 50, 160, 30, 30 };
+            SDL_Rect letterRect = { windowWidth / 2 - 120 + i * 50, 160, 30, 30 };
             SDL_RenderFillRect(m_renderer, &letterRect);
         }
     }
     
-    // "Press any Key To Start" 부제목 표시
+    // Display "Press any Key To Start" subtitle
     if (m_subtitleFont) {
-        SDL_Color subtitleColor = {0, 255, 0, 255};  // 녹색
+        SDL_Color subtitleColor = {0, 255, 0, 255};  // Green
         SDL_Surface* subtitleSurface = TTF_RenderText_Blended(m_subtitleFont, "Press any Key To Start", subtitleColor);
         if (subtitleSurface) {
             SDL_Texture* subtitleTexture = SDL_CreateTextureFromSurface(m_renderer, subtitleSurface);
             if (subtitleTexture) {
+                SDL_SetTextureAlphaMod(subtitleTexture, m_fadeAlpha);
+                int windowWidth;
+                SDL_GetWindowSize(m_window, &windowWidth, nullptr);
                 SDL_Rect subtitleRect = {
-                    (800 - subtitleSurface->w) / 2,
+                    (windowWidth - subtitleSurface->w) / 2,
                     300,
                     subtitleSurface->w,
                     subtitleSurface->h
@@ -675,15 +848,20 @@ void Game::renderMenu() {
             SDL_FreeSurface(subtitleSurface);
         }
     } else {
-        // 폰트가 없을 경우 폴백
+        // Fallback when font is not available
+        int windowWidth;
+        SDL_GetWindowSize(m_window, &windowWidth, nullptr);
         SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
-        SDL_Rect startRect = { 300, 300, 200, 30 };
+        SDL_Rect startRect = { windowWidth / 2 - 100, 300, 200, 30 };
         SDL_RenderFillRect(m_renderer, &startRect);
     }
 }
 
 void Game::renderCountdown() {
     if (!m_titleFont) return;
+    
+    int windowWidth;
+    SDL_GetWindowSize(m_window, &windowWidth, nullptr);
     
     // 카운트다운 숫자 표시
     int countdown = static_cast<int>(m_stateTimer) + 1;
@@ -694,7 +872,7 @@ void Game::renderCountdown() {
         SDL_Texture* countdownTexture = SDL_CreateTextureFromSurface(m_renderer, countdownSurface);
         if (countdownTexture) {
             SDL_Rect countdownRect = {
-                (800 - countdownSurface->w) / 2,
+                (windowWidth - countdownSurface->w) / 2,
                 250,
                 countdownSurface->w,
                 countdownSurface->h
@@ -713,7 +891,7 @@ void Game::renderCountdown() {
             SDL_Texture* readyTexture = SDL_CreateTextureFromSurface(m_renderer, readySurface);
             if (readyTexture) {
                 SDL_Rect readyRect = {
-                    (800 - readySurface->w) / 2,
+                    (windowWidth - readySurface->w) / 2,
                     150,
                     readySurface->w,
                     readySurface->h
@@ -827,4 +1005,60 @@ void Game::addHighScore(int score) {
     }
     
     saveHighScores();
+}
+
+void Game::dropPowerUp(float x, float y) {
+    // Random power-up type
+    int type = rand() % 3;
+    PowerUpType powerUpType;
+    
+    switch (type) {
+        case 0:
+            powerUpType = PowerUpType::SPEED;
+            break;
+        case 1:
+            powerUpType = PowerUpType::MISSILE;
+            break;
+        case 2:
+            powerUpType = PowerUpType::ONE_UP;
+            break;
+    }
+    
+    m_powerUps.push_back(std::make_unique<PowerUp>(x - 15, y, powerUpType));
+}
+
+void Game::checkPowerUpCollection() {
+    for (auto powerUpIt = m_powerUps.begin(); powerUpIt != m_powerUps.end();) {
+        // Check collision with player
+        if (m_player->getX() < (*powerUpIt)->getX() + (*powerUpIt)->getWidth() &&
+            m_player->getX() + m_player->getWidth() > (*powerUpIt)->getX() &&
+            m_player->getY() < (*powerUpIt)->getY() + (*powerUpIt)->getHeight() &&
+            m_player->getY() + m_player->getHeight() > (*powerUpIt)->getY()) {
+            
+            // Apply power-up effect
+            switch ((*powerUpIt)->getType()) {
+                case PowerUpType::SPEED:
+                    m_player->upgradeSpeed();
+                    SDL_Log("INFO: Speed upgraded!");
+                    break;
+                case PowerUpType::MISSILE:
+                    m_player->upgradeMissile();
+                    SDL_Log("INFO: Missile upgraded! Count: %d", m_player->getMissileCount());
+                    break;
+                case PowerUpType::ONE_UP:
+                    m_lives++;
+                    SDL_Log("INFO: 1UP! Lives: %d", m_lives);
+                    break;
+            }
+            
+            // Play sound (reuse shoot sound for now)
+            if (m_shootSound) {
+                Mix_PlayChannel(-1, m_shootSound, 0);
+            }
+            
+            powerUpIt = m_powerUps.erase(powerUpIt);
+        } else {
+            ++powerUpIt;
+        }
+    }
 }

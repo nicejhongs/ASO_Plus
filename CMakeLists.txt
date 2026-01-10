@@ -17,6 +17,7 @@ set(SOURCES
     src/Player.cpp
     src/Enemy.cpp
     src/Bullet.cpp
+    src/PowerUp.cpp
 )
 
 # 실행 파일 생성

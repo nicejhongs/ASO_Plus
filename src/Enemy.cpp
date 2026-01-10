@@ -1,11 +1,14 @@
 #include "Enemy.h"
+#include <cmath>
 
-Enemy::Enemy(float x, float y)
+Enemy::Enemy(float x, float y, bool isSpecial)
     : m_x(x)
     , m_y(y)
-    , m_width(60.0f)  // 크기 증가
+    , m_width(60.0f)
     , m_height(60.0f)
     , m_speed(150.0f)
+    , m_isSpecial(isSpecial)
+    , m_blinkTimer(0.0f)
 {
 }
 
@@ -13,12 +16,16 @@ Enemy::~Enemy() {
 }
 
 void Enemy::update(float deltaTime) {
-    // 아래로 이동
+    // Move downward
     m_y += m_speed * deltaTime;
+    
+    if (m_isSpecial) {
+        m_blinkTimer += deltaTime;
+    }
 }
 
 void Enemy::render(SDL_Renderer* renderer) {
-    // 적을 빨간색 사각형으로 그리기
+    // Draw enemy as red rectangle
     SDL_SetRenderDrawColor(renderer, 255, 50, 50, 255);
     SDL_Rect rect = {
         static_cast<int>(m_x),
@@ -30,7 +37,7 @@ void Enemy::render(SDL_Renderer* renderer) {
 }
 
 bool Enemy::isOffScreen() const {
-    return m_y > 600; // 화면 높이보다 아래로 나가면 제거
+    return m_y > 1200;  // Increased for taller screen
 }
 
 void Enemy::render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRect) {
@@ -41,10 +48,22 @@ void Enemy::render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRe
             static_cast<int>(m_width),
             static_cast<int>(m_height)
         };
-        // srcRect가 nullptr이면 전체 텍스처 사용
+        
+        // Special enemy blinks
+        if (m_isSpecial) {
+            Uint8 alpha = static_cast<Uint8>(128 + 127 * sin(m_blinkTimer * 10));
+            SDL_SetTextureAlphaMod(texture, alpha);
+        }
+        
+        // If srcRect is nullptr, use entire texture
         SDL_RenderCopy(renderer, texture, srcRect, &dstRect);
+        
+        // Reset alpha
+        if (m_isSpecial) {
+            SDL_SetTextureAlphaMod(texture, 255);
+        }
     } else {
-        // 폴백: 기본 렌더링
+        // Fallback: default rendering
         render(renderer);
     }
 }

@@ -15,20 +15,20 @@ Bullet::~Bullet() {
 
 void Bullet::update(float deltaTime) {
     if (m_owner == Owner::PLAYER) {
-        // 플레이어 총알은 위로 이동
+        // Player bullets move upward
         m_y -= m_speed * deltaTime;
     } else {
-        // 적 총알은 아래로 이동
+        // Enemy bullets move downward
         m_y += m_speed * deltaTime;
     }
 }
 
 void Bullet::render(SDL_Renderer* renderer) {
     if (m_owner == Owner::PLAYER) {
-        // 플레이어 총알은 노란색
+        // Player bullets are yellow
         SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
     } else {
-        // 적 총알은 주황색
+        // Enemy bullets are orange
         SDL_SetRenderDrawColor(renderer, 255, 150, 0, 255);
     }
 
@@ -42,5 +42,5 @@ void Bullet::render(SDL_Renderer* renderer) {
 }
 
 bool Bullet::isOffScreen() const {
-    return m_y < -20 || m_y > 620; // 화면 위나 아래로 나가면 제거
+    return m_y < -20 || m_y > 620; // Remove when it goes off screen top or bottom
 }

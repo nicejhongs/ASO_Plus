@@ -1,8 +1,8 @@
 #include "Game.h"
 #include <SDL2/SDL.h>
 
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 600;
+const int SCREEN_WIDTH = 437;
+const int SCREEN_HEIGHT = 778;
 const int FPS = 60;
 const int FRAME_DELAY = 1000 / FPS;
 
@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
     Game game;
 
     if (!game.init("2D Shooting Game", SCREEN_WIDTH, SCREEN_HEIGHT)) {
-        SDL_Log("게임 초기화 실패!");
+        SDL_Log("Failed to initialize game!");
         return -1;
     }
 

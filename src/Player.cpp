@@ -4,13 +4,14 @@
 Player::Player(float x, float y)
     : m_x(x)
     , m_y(y)
-    , m_width(80.0f)  // 256x256 스프라이트를 80x80으로 표시
+    , m_width(80.0f)
     , m_height(80.0f)
     , m_speed(300.0f)
     , m_shootCooldown(0.2f)
     , m_shootTimer(0.0f)
     , m_mouseX(x)
     , m_mouseY(y)
+    , m_missileCount(1)
 {
 }
 
@@ -44,17 +45,22 @@ void Player::update(float deltaTime) {
         m_x += dirX * m_speed * deltaTime;
         m_y += dirY * m_speed * deltaTime;
         
-        // 화면 경계 체크
+        // 화면 경계 체크 (최소값만)
         if (m_x < 0) m_x = 0;
-        if (m_x > 800 - m_width) m_x = 800 - m_width;
         if (m_y < 0) m_y = 0;
-        if (m_y > 600 - m_height) m_y = 600 - m_height;
     }
-    
-    // 발사 쿨다운 타이머
+
+    // 발사 쿨다운 업데이트
     if (m_shootTimer > 0) {
         m_shootTimer -= deltaTime;
     }
+}
+
+void Player::clampToScreen(int screenWidth, int screenHeight) {
+    if (m_x < 0) m_x = 0;
+    if (m_x > screenWidth - m_width) m_x = screenWidth - m_width;
+    if (m_y < 0) m_y = 0;
+    if (m_y > screenHeight - m_height) m_y = screenHeight - m_height;
 }
 
 void Player::render(SDL_Renderer* renderer) {
@@ -91,4 +97,18 @@ bool Player::canShoot() const {
 
 void Player::resetShootTimer() {
     m_shootTimer = m_shootCooldown;
+}
+
+void Player::upgradeSpeed() {
+    m_speed += 50.0f;
+    if (m_speed > 500.0f) {
+        m_speed = 500.0f;  // Max speed
+    }
+}
+
+void Player::upgradeMissile() {
+    m_missileCount++;
+    if (m_missileCount > 5) {
+        m_missileCount = 5;  // Max 5 bullets
+    }
 }

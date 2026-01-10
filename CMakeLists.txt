@@ -16,6 +16,7 @@ set(SOURCES
     src/Game.cpp
     src/Player.cpp
     src/Enemy.cpp
+    src/Boss.cpp
     src/Bullet.cpp
     src/PowerUp.cpp
 )

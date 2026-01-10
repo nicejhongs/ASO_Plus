@@ -32,6 +32,8 @@ private:
     float m_x, m_y;
     float m_width, m_height;
     float m_speed;
+    float m_acceleration;  // Missile acceleration
+    float m_currentSpeed;  // Current speed (for missiles)
     Owner m_owner;
     BulletType m_type;
 };

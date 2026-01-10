@@ -5,7 +5,9 @@ Bullet::Bullet(float x, float y, Owner owner, BulletType type)
     , m_y(y)
     , m_width(type == BulletType::MISSILE ? 15.0f : 5.0f)
     , m_height(type == BulletType::MISSILE ? 30.0f : 15.0f)
-    , m_speed(type == BulletType::MISSILE ? 600.0f : 500.0f)
+    , m_speed(type == BulletType::MISSILE ? 800.0f : 500.0f)  // Max speed for missile
+    , m_acceleration(type == BulletType::MISSILE ? 1200.0f : 0.0f)  // Missile acceleration
+    , m_currentSpeed(type == BulletType::MISSILE ? 100.0f : 500.0f)  // Start slow for missile
     , m_owner(owner)
     , m_type(type)
 {
@@ -15,12 +17,22 @@ Bullet::~Bullet() {
 }
 
 void Bullet::update(float deltaTime) {
+    // Apply acceleration for missiles
+    if (m_type == BulletType::MISSILE && m_owner == Owner::PLAYER) {
+        m_currentSpeed += m_acceleration * deltaTime;
+        if (m_currentSpeed > m_speed) {
+            m_currentSpeed = m_speed;  // Cap at max speed
+        }
+    }
+    
+    float moveSpeed = (m_type == BulletType::MISSILE && m_owner == Owner::PLAYER) ? m_currentSpeed : m_speed;
+    
     if (m_owner == Owner::PLAYER) {
         // Player bullets move upward
-        m_y -= m_speed * deltaTime;
+        m_y -= moveSpeed * deltaTime;
     } else {
         // Enemy bullets move downward
-        m_y += m_speed * deltaTime;
+        m_y += moveSpeed * deltaTime;
     }
 }
 

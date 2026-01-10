@@ -36,18 +36,43 @@ Game::Game()
     , m_shootSound(nullptr)
     , m_explosionSound(nullptr)
     , m_bgMusic(nullptr)
+    , m_stage01Music(nullptr)
+    , m_stage02Music(nullptr)
+    , m_boss01Music(nullptr)
+    , m_boss02Music(nullptr)
+    , m_boss03Music(nullptr)
+    , m_boss04Music(nullptr)
     , m_backgroundTexture(nullptr)
+    , m_background01Texture(nullptr)
+    , m_background02Texture(nullptr)
+    , m_background03Texture(nullptr)
+    , m_background04Texture(nullptr)
+    , m_bgSlot1Texture(nullptr)
+    , m_bgSlot2Texture(nullptr)
     , m_backgroundY1(0.0f)
     , m_backgroundY2(-960.0f)
     , m_backgroundScrollSpeed(50.0f)
+    , m_bgSequenceIndex(0)
+    , m_bg03LoopCount(0)
+    , m_maxBg03Loops(3)
+    , m_currentSequenceTexture(nullptr)
+    , m_nextSequenceTexture(nullptr)
     , m_playerTexture(nullptr)
     , m_shipStopTexture(nullptr)
     , m_shipForwardTexture(nullptr)
     , m_shipBackwardTexture(nullptr)
     , m_shipLeftTexture(nullptr)
     , m_shipRightTexture(nullptr)
-    , m_enemyTexture(nullptr)
+    , m_enemy01Texture(nullptr)
+    , m_enemy02Texture(nullptr)
     , m_enemy03Texture(nullptr)
+    , m_enemy04Texture(nullptr)
+    , m_enemy05Texture(nullptr)
+    , m_enemyTexture(nullptr)
+    , m_boss01Texture(nullptr)
+    , m_boss(nullptr)
+    , m_enemyKillCount(0)
+    , m_currentStage(1)
     , m_boom01Texture(nullptr)
     , m_boom02Texture(nullptr)
     , m_boom03Texture(nullptr)
@@ -164,6 +189,55 @@ bool Game::init(const char* title, int width, int height) {
         SDL_Log("INFO: Failed to load background.png: %s (path: %s)", IMG_GetError(), bgPath.c_str());
     }
     
+    // Load background textures (background01 ~ background04)
+    std::string bg01Path = getResourcePath("background01.png");
+    SDL_Surface* bg01Surface = IMG_Load(bg01Path.c_str());
+    if (bg01Surface) {
+        m_background01Texture = SDL_CreateTextureFromSurface(m_renderer, bg01Surface);
+        SDL_FreeSurface(bg01Surface);
+        if (m_background01Texture) {
+            SDL_Log("INFO: Loaded background01.png: %s", bg01Path.c_str());
+        }
+    }
+    
+    std::string bg02Path = getResourcePath("background02.png");
+    SDL_Surface* bg02Surface = IMG_Load(bg02Path.c_str());
+    if (bg02Surface) {
+        m_background02Texture = SDL_CreateTextureFromSurface(m_renderer, bg02Surface);
+        SDL_FreeSurface(bg02Surface);
+        if (m_background02Texture) {
+            SDL_Log("INFO: Loaded background02.png: %s", bg02Path.c_str());
+        }
+    }
+    
+    std::string bg03Path = getResourcePath("background03.png");
+    SDL_Surface* bg03Surface = IMG_Load(bg03Path.c_str());
+    if (bg03Surface) {
+        m_background03Texture = SDL_CreateTextureFromSurface(m_renderer, bg03Surface);
+        SDL_FreeSurface(bg03Surface);
+        if (m_background03Texture) {
+            SDL_Log("INFO: Loaded background03.png: %s", bg03Path.c_str());
+        }
+    }
+    
+    std::string bg04Path = getResourcePath("background04.png");
+    SDL_Surface* bg04Surface = IMG_Load(bg04Path.c_str());
+    if (bg04Surface) {
+        m_background04Texture = SDL_CreateTextureFromSurface(m_renderer, bg04Surface);
+        SDL_FreeSurface(bg04Surface);
+        if (m_background04Texture) {
+            SDL_Log("INFO: Loaded background04.png: %s", bg04Path.c_str());
+        }
+    }
+    
+    // Initialize background scrolling slots
+    // Both slots start with background01, next will be background02
+    m_bgSlot1Texture = m_background01Texture;
+    m_bgSlot2Texture = m_background01Texture;  // Same as slot1 initially
+    m_bgSequenceIndex = 0;  // Starting with bg01
+    m_currentSequenceTexture = m_background01Texture;
+    m_nextSequenceTexture = m_background02Texture;  // 02 will come after 01
+    
     // Load player sprite (ship_01.png) - legacy
     std::string playerSpritePath = getResourcePath("ship_01.png");
     SDL_Surface* playerSurface = IMG_Load(playerSpritePath.c_str());
@@ -257,39 +331,93 @@ bool Game::init(const char* title, int width, int height) {
         SDL_Log("INFO: Failed to load ship_right.png: %s (path: %s)", IMG_GetError(), shipRightPath.c_str());
     }
     
-    // Load enemy sprite (enemy_02.png)
-    std::string enemySpritePath = getResourcePath("enemy_02.png");
-    SDL_Surface* enemySurface = IMG_Load(enemySpritePath.c_str());
-    if (enemySurface) {
-        // Set white background as transparent (RGB: 255, 255, 255)
-        SDL_SetColorKey(enemySurface, SDL_TRUE, SDL_MapRGB(enemySurface->format, 255, 255, 255));
-        
-        m_enemyTexture = SDL_CreateTextureFromSurface(m_renderer, enemySurface);
-        SDL_FreeSurface(enemySurface);
-        
-        if (m_enemyTexture) {
-            SDL_Log("INFO: Loaded enemy_02.png: %s", enemySpritePath.c_str());
-            SDL_SetTextureBlendMode(m_enemyTexture, SDL_BLENDMODE_BLEND);
+    // Load enemy sprites (enemy_01 ~ enemy_05)
+    std::string enemy01Path = getResourcePath("enemy_01.png");
+    SDL_Surface* enemy01Surface = IMG_Load(enemy01Path.c_str());
+    if (enemy01Surface) {
+        SDL_SetColorKey(enemy01Surface, SDL_TRUE, SDL_MapRGB(enemy01Surface->format, 255, 255, 255));
+        m_enemy01Texture = SDL_CreateTextureFromSurface(m_renderer, enemy01Surface);
+        SDL_FreeSurface(enemy01Surface);
+        if (m_enemy01Texture) {
+            SDL_Log("INFO: Loaded enemy_01.png: %s", enemy01Path.c_str());
+            SDL_SetTextureBlendMode(m_enemy01Texture, SDL_BLENDMODE_BLEND);
         }
     } else {
-        SDL_Log("INFO: Failed to load enemy_02.png: %s (path: %s)", IMG_GetError(), enemySpritePath.c_str());
+        SDL_Log("INFO: Failed to load enemy_01.png: %s (path: %s)", IMG_GetError(), enemy01Path.c_str());
     }
     
-    // Load special enemy sprite (enemy_03.png)
-    std::string enemy03SpritePath = getResourcePath("enemy_03.png");
-    SDL_Surface* enemy03Surface = IMG_Load(enemy03SpritePath.c_str());
+    std::string enemy02Path = getResourcePath("enemy_02.png");
+    SDL_Surface* enemy02Surface = IMG_Load(enemy02Path.c_str());
+    if (enemy02Surface) {
+        SDL_SetColorKey(enemy02Surface, SDL_TRUE, SDL_MapRGB(enemy02Surface->format, 255, 255, 255));
+        m_enemy02Texture = SDL_CreateTextureFromSurface(m_renderer, enemy02Surface);
+        SDL_FreeSurface(enemy02Surface);
+        if (m_enemy02Texture) {
+            SDL_Log("INFO: Loaded enemy_02.png: %s", enemy02Path.c_str());
+            SDL_SetTextureBlendMode(m_enemy02Texture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: Failed to load enemy_02.png: %s (path: %s)", IMG_GetError(), enemy02Path.c_str());
+    }
+    
+    std::string enemy03Path = getResourcePath("enemy_03.png");
+    SDL_Surface* enemy03Surface = IMG_Load(enemy03Path.c_str());
     if (enemy03Surface) {
         SDL_SetColorKey(enemy03Surface, SDL_TRUE, SDL_MapRGB(enemy03Surface->format, 255, 255, 255));
-        
         m_enemy03Texture = SDL_CreateTextureFromSurface(m_renderer, enemy03Surface);
         SDL_FreeSurface(enemy03Surface);
-        
         if (m_enemy03Texture) {
-            SDL_Log("INFO: Loaded enemy_03.png: %s", enemy03SpritePath.c_str());
+            SDL_Log("INFO: Loaded enemy_03.png: %s", enemy03Path.c_str());
             SDL_SetTextureBlendMode(m_enemy03Texture, SDL_BLENDMODE_BLEND);
         }
     } else {
-        SDL_Log("INFO: Failed to load enemy_03.png: %s (path: %s)", IMG_GetError(), enemy03SpritePath.c_str());
+        SDL_Log("INFO: Failed to load enemy_03.png: %s (path: %s)", IMG_GetError(), enemy03Path.c_str());
+    }
+    
+    std::string enemy04Path = getResourcePath("enemy_04.png");
+    SDL_Surface* enemy04Surface = IMG_Load(enemy04Path.c_str());
+    if (enemy04Surface) {
+        SDL_SetColorKey(enemy04Surface, SDL_TRUE, SDL_MapRGB(enemy04Surface->format, 255, 255, 255));
+        m_enemy04Texture = SDL_CreateTextureFromSurface(m_renderer, enemy04Surface);
+        SDL_FreeSurface(enemy04Surface);
+        if (m_enemy04Texture) {
+            SDL_Log("INFO: Loaded enemy_04.png: %s", enemy04Path.c_str());
+            SDL_SetTextureBlendMode(m_enemy04Texture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: Failed to load enemy_04.png: %s (path: %s)", IMG_GetError(), enemy04Path.c_str());
+    }
+    
+    std::string enemy05Path = getResourcePath("enemy_05.png");
+    SDL_Surface* enemy05Surface = IMG_Load(enemy05Path.c_str());
+    if (enemy05Surface) {
+        SDL_SetColorKey(enemy05Surface, SDL_TRUE, SDL_MapRGB(enemy05Surface->format, 255, 255, 255));
+        m_enemy05Texture = SDL_CreateTextureFromSurface(m_renderer, enemy05Surface);
+        SDL_FreeSurface(enemy05Surface);
+        if (m_enemy05Texture) {
+            SDL_Log("INFO: Loaded enemy_05.png: %s", enemy05Path.c_str());
+            SDL_SetTextureBlendMode(m_enemy05Texture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: Failed to load enemy_05.png: %s (path: %s)", IMG_GetError(), enemy05Path.c_str());
+    }
+    
+    // Legacy: Load enemy_02 as default
+    m_enemyTexture = m_enemy02Texture;
+    
+    // Load boss sprites
+    std::string boss01Path = getResourcePath("boss01.png");
+    SDL_Surface* boss01Surface = IMG_Load(boss01Path.c_str());
+    if (boss01Surface) {
+        SDL_SetColorKey(boss01Surface, SDL_TRUE, SDL_MapRGB(boss01Surface->format, 255, 255, 255));
+        m_boss01Texture = SDL_CreateTextureFromSurface(m_renderer, boss01Surface);
+        SDL_FreeSurface(boss01Surface);
+        if (m_boss01Texture) {
+            SDL_Log("INFO: Loaded boss01.png: %s", boss01Path.c_str());
+            SDL_SetTextureBlendMode(m_boss01Texture, SDL_BLENDMODE_BLEND);
+        }
+    } else {
+        SDL_Log("INFO: Failed to load boss01.png: %s (path: %s)", IMG_GetError(), boss01Path.c_str());
     }
     
     // Load boom explosion sprites
@@ -479,6 +607,8 @@ void Game::handleEvents() {
         }
         else if (event.type == SDL_MOUSEBUTTONDOWN) {
             if (event.button.button == SDL_BUTTON_LEFT) {
+                m_mousePressed = true;
+                
                 // Click on START_SCREEN to start countdown directly
                 if (m_gameState == GameState::START_SCREEN) {
                     m_gameState = GameState::COUNTDOWN;
@@ -505,37 +635,13 @@ void Game::handleEvents() {
                 }
                 // Fire missiles with mouse click in PLAYING state
                 else if (m_gameState == GameState::PLAYING) {
-                    // Missile count based on missile level (0=1, 1=2, 2=3, 3=4, 4=5)
-                    int missileCount = 1 + m_player->getMissileLevel();
-                    if (missileCount > 5) missileCount = 5;
-                    
-                    float playerCenterX = m_player->getX() + m_player->getWidth() / 2;
-                    
-                    // Fire missiles based on level
-                    if (missileCount == 1) {
-                        m_bullets.push_back(std::make_unique<Bullet>(
-                            playerCenterX - 7.5f, m_player->getY(), Bullet::Owner::PLAYER, Bullet::BulletType::MISSILE
-                        ));
-                    } else {
-                        float spacing = 30.0f;
-                        float startX = playerCenterX - (missileCount - 1) * spacing / 2;
-                        for (int i = 0; i < missileCount; i++) {
-                            m_bullets.push_back(std::make_unique<Bullet>(
-                                startX + i * spacing - 7.5f, m_player->getY(), Bullet::Owner::PLAYER, Bullet::BulletType::MISSILE
-                            ));
-                        }
-                    }
-                    
-                    // Play shoot sound (different pitch for missile)
-                    if (m_shootSound) {
-                        Mix_PlayChannel(-1, m_shootSound, 0);
-                    } else {
-                        // Fallback: Windows beep sound (lower pitch for missile)
-                        #ifdef _WIN32
-                        Beep(600, 100);
-                        #endif
-                    }
+                    // Missile firing is now handled in update() with auto-fire
                 }
+            }
+        }
+        else if (event.type == SDL_MOUSEBUTTONUP) {
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                m_mousePressed = false;
             }
         }
     }
@@ -569,21 +675,70 @@ void Game::update(float deltaTime) {
     }
     
     // Execute game logic only in PLAYING state
-    // Background scroll
+    // Background scroll with seamless transitions
     m_backgroundY1 += m_backgroundScrollSpeed * deltaTime;
     m_backgroundY2 += m_backgroundScrollSpeed * deltaTime;
     int windowHeight;
     SDL_GetWindowSize(m_window, nullptr, &windowHeight);
     
-    m_backgroundY1 += m_backgroundScrollSpeed * deltaTime;
-    m_backgroundY2 += m_backgroundScrollSpeed * deltaTime;
+    // Advance to next background in sequence
+    auto advanceSequence = [&]() -> SDL_Texture* {
+        SDL_Texture* textureToUse = m_nextSequenceTexture;
+        
+        // Determine what comes next after this one
+        if (m_boss) {
+            // Boss active: keep looping background 01
+            m_nextSequenceTexture = m_background01Texture;
+        } else if (m_enemyKillCount >= 18) {
+            // Before boss: transition to 04 then 01
+            if (m_bgSequenceIndex == 2) {
+                // From bg03 to bg04
+                m_bgSequenceIndex = 4;
+                m_nextSequenceTexture = m_background04Texture;
+                SDL_Log("INFO: Next background: 04 (Before Boss)");
+            } else if (m_bgSequenceIndex == 4) {
+                // From bg04 to bg01 (boss)
+                m_bgSequenceIndex = 5;
+                m_nextSequenceTexture = m_background01Texture;
+                SDL_Log("INFO: Next background: 01 (Boss)");
+            } else if (m_bgSequenceIndex == 5) {
+                // Boss: loop bg01
+                m_nextSequenceTexture = m_background01Texture;
+            }
+        } else {
+            // Normal sequence: 01 -> 02 -> 03 (loop)
+            if (m_bgSequenceIndex == 0) {
+                // After 01 comes 02, prepare 03 next
+                m_bgSequenceIndex = 1;
+                m_nextSequenceTexture = m_background03Texture;
+                SDL_Log("INFO: Next background: 03");
+            } else if (m_bgSequenceIndex == 1) {
+                // After 02 comes 03, keep looping 03
+                m_bgSequenceIndex = 2;
+                m_bg03LoopCount = 0;
+                m_nextSequenceTexture = m_background03Texture;
+                SDL_Log("INFO: Next background: 03 (first loop)");
+            } else if (m_bgSequenceIndex == 2) {
+                // bg03 loops
+                m_bg03LoopCount++;
+                m_nextSequenceTexture = m_background03Texture;
+                SDL_Log("INFO: Next background: 03 (loop %d)", m_bg03LoopCount);
+            }
+        }
+        
+        return textureToUse;
+    };
     
-    // Reset background position when it goes off screen
+    // When top background scrolls off screen, replace it with next in sequence
     if (m_backgroundY1 >= windowHeight) {
         m_backgroundY1 = m_backgroundY2 - windowHeight;
+        m_bgSlot1Texture = advanceSequence();
     }
+    
+    // When bottom background scrolls off screen, replace it with next in sequence
     if (m_backgroundY2 >= windowHeight) {
         m_backgroundY2 = m_backgroundY1 - windowHeight;
+        m_bgSlot2Texture = advanceSequence();
     }
     
     // Update player
@@ -630,18 +785,124 @@ void Game::update(float deltaTime) {
             #endif
         }
     }
-
-    // Spawn enemies
-    m_enemySpawnTimer += deltaTime;
-    if (m_enemySpawnTimer >= m_enemySpawnInterval) {
-        int windowWidth, windowHeight;
-        SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+    
+    // Auto-fire missiles when mouse is pressed (every 1.0 second, 2x slower than laser)
+    m_missileShootTimer -= deltaTime;
+    if (m_mousePressed && m_missileShootTimer <= 0.0f) {
+        // Missile count based on missile level (0=1, 1=2, 2=3, 3=4, 4=5)
+        int missileCount = 1 + m_player->getMissileLevel();
+        if (missileCount > 5) missileCount = 5;
         
-        float enemyX = static_cast<float>(rand() % (windowWidth - 40));
-        // 10% chance to spawn special enemy
-        bool isSpecial = (rand() % 10) == 0;
-        m_enemies.push_back(std::make_unique<Enemy>(enemyX, -40.0f, isSpecial));
-        m_enemySpawnTimer = 0.0f;
+        float playerCenterX = m_player->getX() + m_player->getWidth() / 2;
+        
+        // Fire missiles based on level
+        if (missileCount == 1) {
+            m_bullets.push_back(std::make_unique<Bullet>(
+                playerCenterX - 7.5f, m_player->getY(), Bullet::Owner::PLAYER, Bullet::BulletType::MISSILE
+            ));
+        } else {
+            float spacing = 30.0f;
+            float startX = playerCenterX - (missileCount - 1) * spacing / 2;
+            for (int i = 0; i < missileCount; i++) {
+                m_bullets.push_back(std::make_unique<Bullet>(
+                    startX + i * spacing - 7.5f, m_player->getY(), Bullet::Owner::PLAYER, Bullet::BulletType::MISSILE
+                ));
+            }
+        }
+        
+        m_missileShootTimer = m_missileShootCooldown;  // Reset to 1.0 second
+        
+        // Play shoot sound (same as laser)
+        if (m_shootSound) {
+            Mix_VolumeChunk(m_shootSound, 32);
+            Mix_PlayChannel(-1, m_shootSound, 0);
+        }
+    }
+
+    // Spawn enemies (only if no boss active)
+    if (!m_boss) {
+        m_enemySpawnTimer += deltaTime;
+        if (m_enemySpawnTimer >= m_enemySpawnInterval) {
+            int windowWidth, windowHeight;
+            SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+            
+            float enemyX = static_cast<float>(rand() % (windowWidth - 40));
+            
+            // Determine enemy type (10% special, 90% random types)
+            int typeRoll = rand() % 100;
+            Enemy::EnemyType enemyType;
+            bool isSpecial = false;
+            
+            if (typeRoll < 10) {
+                // 10% chance: Special enemy (TYPE_03)
+                enemyType = Enemy::EnemyType::TYPE_03;
+                isSpecial = true;
+            } else {
+                // 90% chance: Random type from TYPE_01, 02, 04, 05
+                int typeIndex = rand() % 4;
+                switch (typeIndex) {
+                    case 0: enemyType = Enemy::EnemyType::TYPE_01; break;
+                    case 1: enemyType = Enemy::EnemyType::TYPE_02; break;
+                    case 2: enemyType = Enemy::EnemyType::TYPE_04; break;
+                    case 3: enemyType = Enemy::EnemyType::TYPE_05; break;
+                }
+            }
+            
+            m_enemies.push_back(std::make_unique<Enemy>(enemyX, -40.0f, enemyType, isSpecial));
+            m_enemySpawnTimer = 0.0f;
+        }
+    }
+    
+    // Check if boss should spawn (every 20 enemies killed)
+    if (!m_boss && m_enemyKillCount >= 20) {
+        spawnBoss(m_currentStage);
+        m_enemyKillCount = 0;
+        m_enemies.clear();  // Clear all enemies when boss appears
+    }
+
+    // Update boss
+    if (m_boss) {
+        m_boss->update(deltaTime);
+        
+        // Boss shoots occasionally
+        if (m_boss->canShoot() && m_boss->getState() == Boss::BossState::FIGHTING) {
+            // Boss shoots from 12 cannon positions
+            const Boss::CannonPos* cannons = m_boss->getCannonPositions();
+            int cannonCount = m_boss->getCannonCount();
+            
+            for (int i = 0; i < cannonCount; i++) {
+                float cannonX = m_boss->getX() + cannons[i].offsetX;
+                float cannonY = m_boss->getY() + cannons[i].offsetY;
+                
+                m_enemyBullets.push_back(std::make_unique<Bullet>(
+                    cannonX, cannonY, Bullet::Owner::ENEMY
+                ));
+            }
+            
+            m_boss->resetShootTimer();
+        }
+        
+        // Remove boss if dead
+        if (m_boss->isOffScreen()) {
+            m_boss.reset();
+            m_currentStage++;
+            
+            // Resume stage music based on current stage
+            Mix_HaltMusic();
+            Mix_Music* stageMusic = nullptr;
+            if (m_currentStage == 1 && m_stage01Music) {
+                stageMusic = m_stage01Music;
+            } else if (m_currentStage == 2 && m_stage02Music) {
+                stageMusic = m_stage02Music;
+            } else if (m_bgMusic) {
+                stageMusic = m_bgMusic;  // Fallback to default music
+            }
+            
+            if (stageMusic) {
+                Mix_VolumeMusic(64);
+                Mix_PlayMusic(stageMusic, -1);
+            }
+        }
     }
 
     // Update enemies
@@ -653,12 +914,26 @@ void Game::update(float deltaTime) {
             float enemyCenterX = enemy->getX() + enemy->getWidth() / 2;
             float enemyBottomY = enemy->getY() + enemy->getHeight();
             
-            // Create enemy bullet (red, moving downward)
-            m_enemyBullets.push_back(std::make_unique<Bullet>(
-                enemyCenterX, enemyBottomY, Bullet::Owner::ENEMY
-            ));
-            
-            enemy->resetShootTimer();
+            // TYPE_05: Burst shooting (3 bullets)
+            if (enemy->getType() == Enemy::EnemyType::TYPE_05 && enemy->getBurstCount() > 0) {
+                m_enemyBullets.push_back(std::make_unique<Bullet>(
+                    enemyCenterX, enemyBottomY, Bullet::Owner::ENEMY
+                ));
+                enemy->decreaseBurstCount();
+                
+                // Continue burst (0.2s delay between bullets)
+                if (enemy->getBurstCount() > 0) {
+                    enemy->resetShootTimer();
+                    // Short delay for burst
+                    // Note: This is handled in Enemy class with resetShootTimer
+                }
+            } else {
+                // Normal shooting for other types
+                m_enemyBullets.push_back(std::make_unique<Bullet>(
+                    enemyCenterX, enemyBottomY, Bullet::Owner::ENEMY
+                ));
+                enemy->resetShootTimer();
+            }
         }
     }
     
@@ -713,6 +988,13 @@ void Game::update(float deltaTime) {
         bool bulletRemoved = false;
         
         if ((*bulletIt)->getOwner() == Bullet::Owner::PLAYER) {
+            // Missiles cannot destroy flying enemies (only ground objects in future)
+            if ((*bulletIt)->getType() == Bullet::BulletType::MISSILE) {
+                ++bulletIt;
+                continue;
+            }
+            
+            // Only lasers can destroy enemies
             for (auto enemyIt = m_enemies.begin(); enemyIt != m_enemies.end();) {
                 // Check collision
                 if ((*bulletIt)->getX() < (*enemyIt)->getX() + (*enemyIt)->getWidth() &&
@@ -730,6 +1012,9 @@ void Game::update(float deltaTime) {
                     if (m_score > m_highScore) {
                         m_highScore = m_score;
                     }
+                    
+                    // Increment enemy kill count
+                    m_enemyKillCount++;
                     
                     // Play explosion sound
                     if (m_explosionSound) {
@@ -775,6 +1060,12 @@ void Game::update(float deltaTime) {
     
     // Check player-enemy bullet collision
     checkPlayerEnemyBulletCollision();
+    
+    // Check player-boss collision
+    checkPlayerBossCollision();
+    
+    // Check boss-bullet collision
+    checkBossBulletCollision();
     
     // Check power-up collection
     checkPowerUpCollection();
@@ -867,14 +1158,17 @@ void Game::damagePlayer() {
                     SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
                     SDL_RenderClear(m_renderer);
                     
-                    // Draw background
-                    if (m_backgroundTexture) {
+                    // Draw background using slot system
+                    SDL_Texture* bg1Texture = m_bgSlot1Texture ? m_bgSlot1Texture : m_backgroundTexture;
+                    SDL_Texture* bg2Texture = m_bgSlot2Texture ? m_bgSlot2Texture : m_backgroundTexture;
+                    
+                    if (bg1Texture && bg2Texture) {
                         int windowWidth, windowHeight;
                         SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
                         SDL_Rect bg1 = {0, static_cast<int>(m_backgroundY1), windowWidth, windowHeight};
                         SDL_Rect bg2 = {0, static_cast<int>(m_backgroundY2), windowWidth, windowHeight};
-                        SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg1);
-                        SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg2);
+                        SDL_RenderCopy(m_renderer, bg1Texture, nullptr, &bg1);
+                        SDL_RenderCopy(m_renderer, bg2Texture, nullptr, &bg2);
                     }
                     
                     // Draw explosion frame centered on player
@@ -924,19 +1218,161 @@ void Game::damagePlayer() {
             }
 }
 
+void Game::checkPlayerBossCollision() {
+    if (!m_boss) return;
+    
+    // Use hitbox for collision
+    float playerLeft = m_player->getHitboxX();
+    float playerRight = playerLeft + m_player->getHitboxWidth();
+    float playerTop = m_player->getHitboxY();
+    float playerBottom = playerTop + m_player->getHitboxHeight();
+    
+    float bossLeft = m_boss->getX();
+    float bossRight = bossLeft + m_boss->getWidth();
+    float bossTop = m_boss->getY();
+    float bossBottom = bossTop + m_boss->getHeight();
+    
+    // Check collision between player and boss
+    if (playerLeft < bossRight &&
+        playerRight > bossLeft &&
+        playerTop < bossBottom &&
+        playerBottom > bossTop) {
+        
+        // Player collided with boss: instant death
+        damagePlayer();
+    }
+}
+
+void Game::checkBossBulletCollision() {
+    if (!m_boss || m_boss->getState() != Boss::BossState::FIGHTING) {
+        return;
+    }
+    
+    for (auto bulletIt = m_bullets.begin(); bulletIt != m_bullets.end();) {
+        bool bulletRemoved = false;
+        
+        if ((*bulletIt)->getOwner() == Bullet::Owner::PLAYER) {
+            int damage = 1;
+            bool hitBoss = false;
+            
+            // Check weak point first (front center) - 5x damage
+            float weakX = m_boss->getWeakPointX();
+            float weakY = m_boss->getWeakPointY();
+            float weakW = m_boss->getWeakPointWidth();
+            float weakH = m_boss->getWeakPointHeight();
+            
+            if ((*bulletIt)->getX() < weakX + weakW &&
+                (*bulletIt)->getX() + (*bulletIt)->getWidth() > weakX &&
+                (*bulletIt)->getY() < weakY + weakH &&
+                (*bulletIt)->getY() + (*bulletIt)->getHeight() > weakY) {
+                
+                // Hit weak point: 5x damage
+                damage = 5;
+                hitBoss = true;
+            }
+            // Check collision with boss body (normal hitbox)
+            else if ((*bulletIt)->getX() < m_boss->getHitboxX() + m_boss->getHitboxWidth() &&
+                     (*bulletIt)->getX() + (*bulletIt)->getWidth() > m_boss->getHitboxX() &&
+                     (*bulletIt)->getY() < m_boss->getHitboxY() + m_boss->getHitboxHeight() &&
+                     (*bulletIt)->getY() + (*bulletIt)->getHeight() > m_boss->getHitboxY()) {
+                
+                // Normal damage
+                damage = 1;
+                hitBoss = true;
+            }
+            
+            if (hitBoss) {
+                // Damage boss
+                m_boss->takeDamage(damage);
+                
+                // Add score
+                if (m_boss->getHealth() <= 0) {
+                    m_score += 1000;  // Big bonus for defeating boss
+                } else {
+                    m_score += (damage == 5) ? 25 : 5;  // More score for weak point hit
+                }
+                
+                if (m_score > m_highScore) {
+                    m_highScore = m_score;
+                }
+                
+                bulletIt = m_bullets.erase(bulletIt);
+                bulletRemoved = true;
+            }
+        }
+        
+        if (!bulletRemoved) {
+            ++bulletIt;
+        }
+    }
+}
+
+void Game::spawnBoss(int stage) {
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+    
+    float bossX = windowWidth / 2.0f - 120.0f;  // Center horizontally (boss is 240 wide)
+    float bossY = -250.0f;  // Start above screen
+    
+    m_boss = std::make_unique<Boss>(bossX, bossY, stage);
+    
+    // Stop normal background music and play boss music
+    Mix_HaltMusic();
+    
+    Mix_Music* bossMusic = nullptr;
+    switch (stage) {
+        case 1:
+            bossMusic = m_boss01Music;
+            break;
+        case 2:
+            bossMusic = m_boss02Music;
+            break;
+        case 3:
+            bossMusic = m_boss03Music;
+            break;
+        case 4:
+            bossMusic = m_boss04Music;
+            break;
+        default:
+            // Cycle through boss music if stage > 4
+            int musicIndex = ((stage - 1) % 4) + 1;
+            switch (musicIndex) {
+                case 1: bossMusic = m_boss01Music; break;
+                case 2: bossMusic = m_boss02Music; break;
+                case 3: bossMusic = m_boss03Music; break;
+                case 4: bossMusic = m_boss04Music; break;
+            }
+            break;
+    }
+    
+    if (bossMusic) {
+        Mix_VolumeMusic(64);
+        if (Mix_PlayMusic(bossMusic, -1) == -1) {
+            SDL_Log("ERROR: Failed to play boss music: %s", Mix_GetError());
+        } else {
+            SDL_Log("INFO: Boss Stage %d spawned! Playing boss%02d music.", stage, stage);
+        }
+    } else {
+        SDL_Log("WARNING: Boss Stage %d spawned! (No boss music available)", stage);
+    }
+}
+
 void Game::render() {
     // Clear screen (black)
     SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
     SDL_RenderClear(m_renderer);
     
-    // Draw background (first)
-    if (m_backgroundTexture) {
+    // Draw background using slot system (first)
+    SDL_Texture* bg1Texture = m_bgSlot1Texture ? m_bgSlot1Texture : m_backgroundTexture;
+    SDL_Texture* bg2Texture = m_bgSlot2Texture ? m_bgSlot2Texture : m_backgroundTexture;
+    
+    if (bg1Texture && bg2Texture) {
         int windowWidth, windowHeight;
         SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
         SDL_Rect bg1 = {0, static_cast<int>(m_backgroundY1), windowWidth, windowHeight};
         SDL_Rect bg2 = {0, static_cast<int>(m_backgroundY2), windowWidth, windowHeight};
-        SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg1);
-        SDL_RenderCopy(m_renderer, m_backgroundTexture, nullptr, &bg2);
+        SDL_RenderCopy(m_renderer, bg1Texture, nullptr, &bg1);
+        SDL_RenderCopy(m_renderer, bg2Texture, nullptr, &bg2);
     }
 
     // Render based on game state
@@ -970,24 +1406,68 @@ void Game::render() {
             m_player->render(m_renderer);
         }
 
-        // Render enemies (using different textures for special)
+        // Render enemies (using different textures based on type)
         for (auto& enemy : m_enemies) {
-            if (enemy->isSpecial() && m_enemy03Texture) {
-                enemy->render(m_renderer, m_enemy03Texture, nullptr);
-            } else if (m_enemyTexture) {
-                enemy->render(m_renderer, m_enemyTexture, nullptr);
+            SDL_Texture* enemyTexture = nullptr;
+            
+            // Select texture based on enemy type
+            switch (enemy->getType()) {
+                case Enemy::EnemyType::TYPE_01:
+                    enemyTexture = m_enemy01Texture;
+                    break;
+                case Enemy::EnemyType::TYPE_02:
+                    enemyTexture = m_enemy02Texture;
+                    break;
+                case Enemy::EnemyType::TYPE_03:
+                    enemyTexture = m_enemy03Texture;
+                    break;
+                case Enemy::EnemyType::TYPE_04:
+                    enemyTexture = m_enemy04Texture;
+                    break;
+                case Enemy::EnemyType::TYPE_05:
+                    enemyTexture = m_enemy05Texture;
+                    break;
+            }
+            
+            if (enemyTexture) {
+                enemy->render(m_renderer, enemyTexture, nullptr);
             } else {
                 enemy->render(m_renderer);
             }
         }
+        
+        // Render boss
+        if (m_boss && m_boss->getState() != Boss::BossState::DEAD) {
+            if (m_boss01Texture) {
+                m_boss->render(m_renderer, m_boss01Texture, nullptr);
+            } else {
+                m_boss->render(m_renderer);
+            }
+            
+            // Render boss health bar
+            int barWidth = 300;
+            int barHeight = 20;
+            int barX = (getWindowWidth() - barWidth) / 2;
+            int barY = 10;
+            
+            // Background (red)
+            SDL_SetRenderDrawColor(m_renderer, 100, 0, 0, 255);
+            SDL_Rect bgRect = {barX, barY, barWidth, barHeight};
+            SDL_RenderFillRect(m_renderer, &bgRect);
+            
+            // Health (green)
+            float healthPercent = static_cast<float>(m_boss->getHealth()) / m_boss->getMaxHealth();
+            SDL_SetRenderDrawColor(m_renderer, 0, 255, 0, 255);
+            SDL_Rect healthRect = {barX, barY, static_cast<int>(barWidth * healthPercent), barHeight};
+            SDL_RenderFillRect(m_renderer, &healthRect);
+            
+            // Border (white)
+            SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+            SDL_RenderDrawRect(m_renderer, &bgRect);
+        }
 
         // Render bullets
         for (auto& bullet : m_bullets) {
-            bullet->render(m_renderer);
-        }
-        
-        // Render enemy bullets
-        for (auto& bullet : m_enemyBullets) {
             bullet->render(m_renderer);
         }
         
@@ -1145,6 +1625,30 @@ void Game::clean() {
         Mix_FreeMusic(m_bgMusic);
         m_bgMusic = nullptr;
     }
+    if (m_stage01Music) {
+        Mix_FreeMusic(m_stage01Music);
+        m_stage01Music = nullptr;
+    }
+    if (m_stage02Music) {
+        Mix_FreeMusic(m_stage02Music);
+        m_stage02Music = nullptr;
+    }
+    if (m_boss01Music) {
+        Mix_FreeMusic(m_boss01Music);
+        m_boss01Music = nullptr;
+    }
+    if (m_boss02Music) {
+        Mix_FreeMusic(m_boss02Music);
+        m_boss02Music = nullptr;
+    }
+    if (m_boss03Music) {
+        Mix_FreeMusic(m_boss03Music);
+        m_boss03Music = nullptr;
+    }
+    if (m_boss04Music) {
+        Mix_FreeMusic(m_boss04Music);
+        m_boss04Music = nullptr;
+    }
     
     Mix_CloseAudio();
     
@@ -1152,6 +1656,22 @@ void Game::clean() {
     if (m_backgroundTexture) {
         SDL_DestroyTexture(m_backgroundTexture);
         m_backgroundTexture = nullptr;
+    }
+    if (m_background01Texture) {
+        SDL_DestroyTexture(m_background01Texture);
+        m_background01Texture = nullptr;
+    }
+    if (m_background02Texture) {
+        SDL_DestroyTexture(m_background02Texture);
+        m_background02Texture = nullptr;
+    }
+    if (m_background03Texture) {
+        SDL_DestroyTexture(m_background03Texture);
+        m_background03Texture = nullptr;
+    }
+    if (m_background04Texture) {
+        SDL_DestroyTexture(m_background04Texture);
+        m_background04Texture = nullptr;
     }
     if (m_playerTexture) {
         SDL_DestroyTexture(m_playerTexture);
@@ -1177,13 +1697,32 @@ void Game::clean() {
         SDL_DestroyTexture(m_shipRightTexture);
         m_shipRightTexture = nullptr;
     }
-    if (m_enemyTexture) {
-        SDL_DestroyTexture(m_enemyTexture);
-        m_enemyTexture = nullptr;
+    if (m_enemy01Texture) {
+        SDL_DestroyTexture(m_enemy01Texture);
+        m_enemy01Texture = nullptr;
+    }
+    if (m_enemy02Texture) {
+        SDL_DestroyTexture(m_enemy02Texture);
+        m_enemy02Texture = nullptr;
     }
     if (m_enemy03Texture) {
         SDL_DestroyTexture(m_enemy03Texture);
         m_enemy03Texture = nullptr;
+    }
+    if (m_enemy04Texture) {
+        SDL_DestroyTexture(m_enemy04Texture);
+        m_enemy04Texture = nullptr;
+    }
+    if (m_enemy05Texture) {
+        SDL_DestroyTexture(m_enemy05Texture);
+        m_enemy05Texture = nullptr;
+    }
+    if (m_enemyTexture) {
+        m_enemyTexture = nullptr;  // Just nullify, already destroyed
+    }
+    if (m_boss01Texture) {
+        SDL_DestroyTexture(m_boss01Texture);
+        m_boss01Texture = nullptr;
     }
     if (m_boom01Texture) {
         SDL_DestroyTexture(m_boom01Texture);

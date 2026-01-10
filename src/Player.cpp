@@ -261,6 +261,6 @@ void Player::resetOnDeath() {
         m_missileCount = 0;
     }
     
-    // Reset energy to half
-    m_energy = m_maxEnergy / 2;
+    // Reset energy to full
+    m_energy = m_maxEnergy;
 }

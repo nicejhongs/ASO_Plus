@@ -26,7 +26,7 @@ public:
     Owner getOwner() const { return m_owner; }
     BulletType getType() const { return m_type; }
 
-    bool isOffScreen() const;
+    bool isOffScreen(int windowHeight) const;
 
 private:
     float m_x, m_y;

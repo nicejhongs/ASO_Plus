@@ -57,6 +57,10 @@ Game::Game()
     , m_maxBg03Loops(3)
     , m_currentSequenceTexture(nullptr)
     , m_nextSequenceTexture(nullptr)
+    , m_bossSpawnTimer(0.0f)
+    , m_bg04Completed(false)
+    , m_itemBoxSpawnTimer(0.0f)
+    , m_inSpaceCity(false)
     , m_playerTexture(nullptr)
     , m_shipStopTexture(nullptr)
     , m_shipForwardTexture(nullptr)
@@ -79,6 +83,10 @@ Game::Game()
     , m_boom04Texture(nullptr)
     , m_boom05Texture(nullptr)
     , m_boom06Texture(nullptr)
+    , m_itemBoxTexture(nullptr)
+    , m_itemSTexture(nullptr)
+    , m_itemLTexture(nullptr)
+    , m_itemMTexture(nullptr)
     , m_titleFont(nullptr)
     , m_uiFont(nullptr)
     , m_subtitleFont(nullptr)
@@ -167,6 +175,24 @@ bool Game::init(const char* title, int width, int height) {
         // Play background music infinitely (-1 = loop)
         Mix_PlayMusic(m_bgMusic, -1);
         Mix_VolumeMusic(64); // Volume 50% (0-128)
+    }
+    
+    // Load stage music
+    std::string stage01Path = getResourcePath("stage01.wav");
+    m_stage01Music = Mix_LoadMUS(stage01Path.c_str());
+    if (m_stage01Music) {
+        SDL_Log("INFO: Loaded stage01.wav: %s", stage01Path.c_str());
+    } else {
+        SDL_Log("INFO: Failed to load stage01.wav: %s", Mix_GetError());
+    }
+    
+    // Load boss music
+    std::string boss01MusicPath = getResourcePath("boss01.wav");
+    m_boss01Music = Mix_LoadMUS(boss01MusicPath.c_str());
+    if (m_boss01Music) {
+        SDL_Log("INFO: Loaded boss01.wav: %s", boss01MusicPath.c_str());
+    } else {
+        SDL_Log("INFO: Failed to load boss01.wav: %s", Mix_GetError());
     }
 
     // Load sprite images (PNG with transparency support)
@@ -505,6 +531,47 @@ bool Game::init(const char* title, int width, int height) {
         SDL_Log("INFO: Failed to load boom06.png: %s (path: %s)", IMG_GetError(), boom06Path.c_str());
     }
     
+    // Load item box textures
+    std::string itemBoxPath = getResourcePath("item_b.png");
+    SDL_Surface* itemBoxSurface = IMG_Load(itemBoxPath.c_str());
+    if (itemBoxSurface) {
+        m_itemBoxTexture = SDL_CreateTextureFromSurface(m_renderer, itemBoxSurface);
+        SDL_FreeSurface(itemBoxSurface);
+        if (m_itemBoxTexture) {
+            SDL_Log("INFO: Loaded item_b.png: %s", itemBoxPath.c_str());
+        }
+    }
+    
+    std::string itemSPath = getResourcePath("item_s.png");
+    SDL_Surface* itemSSurface = IMG_Load(itemSPath.c_str());
+    if (itemSSurface) {
+        m_itemSTexture = SDL_CreateTextureFromSurface(m_renderer, itemSSurface);
+        SDL_FreeSurface(itemSSurface);
+        if (m_itemSTexture) {
+            SDL_Log("INFO: Loaded item_s.png: %s", itemSPath.c_str());
+        }
+    }
+    
+    std::string itemLPath = getResourcePath("item_l.png");
+    SDL_Surface* itemLSurface = IMG_Load(itemLPath.c_str());
+    if (itemLSurface) {
+        m_itemLTexture = SDL_CreateTextureFromSurface(m_renderer, itemLSurface);
+        SDL_FreeSurface(itemLSurface);
+        if (m_itemLTexture) {
+            SDL_Log("INFO: Loaded item_l.png: %s", itemLPath.c_str());
+        }
+    }
+    
+    std::string itemMPath = getResourcePath("item_m.png");
+    SDL_Surface* itemMSurface = IMG_Load(itemMPath.c_str());
+    if (itemMSurface) {
+        m_itemMTexture = SDL_CreateTextureFromSurface(m_renderer, itemMSurface);
+        SDL_FreeSurface(itemMSurface);
+        if (m_itemMTexture) {
+            SDL_Log("INFO: Loaded item_m.png: %s", itemMPath.c_str());
+        }
+    }
+    
     // Load font (Windows default font)
     m_titleFont = TTF_OpenFont("C:\\Windows\\Fonts\\arial.ttf", 72);
     if (!m_titleFont) {
@@ -567,8 +634,18 @@ void Game::handleEvents() {
             m_running = false;
         }
         else if (event.type == SDL_KEYDOWN) {
-            // ESC to toggle mouse grab
+            // ESC to toggle pause during gameplay
             if (event.key.keysym.sym == SDLK_ESCAPE) {
+                if (m_gameState == GameState::PLAYING) {
+                    m_gameState = GameState::PAUSED;
+                    SDL_Log("INFO: Game paused");
+                } else if (m_gameState == GameState::PAUSED) {
+                    m_gameState = GameState::PLAYING;
+                    SDL_Log("INFO: Game resumed");
+                }
+            }
+            // Ctrl+C to toggle mouse grab
+            else if (event.key.keysym.sym == SDLK_c && (SDL_GetModState() & KMOD_CTRL)) {
                 m_mouseGrabbed = !m_mouseGrabbed;
                 SDL_SetWindowGrab(m_window, m_mouseGrabbed ? SDL_TRUE : SDL_FALSE);
                 SDL_Log("INFO: Mouse grab %s", m_mouseGrabbed ? "enabled" : "disabled");
@@ -648,6 +725,11 @@ void Game::handleEvents() {
 }
 
 void Game::update(float deltaTime) {
+    // Don't update when paused
+    if (m_gameState == GameState::PAUSED) {
+        return;
+    }
+    
     // 게임 상태에 따른 처리
     if (m_gameState == GameState::START_SCREEN) {
         // 깜빡임 타이머 업데이트
@@ -666,6 +748,16 @@ void Game::update(float deltaTime) {
         m_stateTimer -= deltaTime;
         if (m_stateTimer <= 0) {
             m_gameState = GameState::PLAYING;
+            
+            // Switch from opening music to stage music
+            if (m_stage01Music) {
+                Mix_HaltMusic();
+                Mix_VolumeMusic(64);
+                Mix_PlayMusic(m_stage01Music, -1);
+                SDL_Log("INFO: Game started - Playing stage01.wav");
+            }
+            
+            // Item boxes will spawn automatically in space city section
         }
         return;
     }
@@ -700,7 +792,8 @@ void Game::update(float deltaTime) {
                 // From bg04 to bg01 (boss)
                 m_bgSequenceIndex = 5;
                 m_nextSequenceTexture = m_background01Texture;
-                SDL_Log("INFO: Next background: 01 (Boss)");
+                m_bg04Completed = true;  // Mark bg04 as completed
+                SDL_Log("INFO: Next background: 01 (Boss) - Starting 10s timer");
             } else if (m_bgSequenceIndex == 5) {
                 // Boss: loop bg01
                 m_nextSequenceTexture = m_background01Texture;
@@ -739,6 +832,46 @@ void Game::update(float deltaTime) {
     if (m_backgroundY2 >= windowHeight) {
         m_backgroundY2 = m_backgroundY1 - windowHeight;
         m_bgSlot2Texture = advanceSequence();
+    }
+    
+    // Track space city section and spawn item boxes
+    // Space city is bg02, bg03 (all), and bg04
+    bool wasInSpaceCity = m_inSpaceCity;
+    
+    // Simply check if we're in the space city backgrounds (index 1, 2, or 4)
+    if (m_bgSequenceIndex == 1 || m_bgSequenceIndex == 2 || m_bgSequenceIndex == 4) {
+        m_inSpaceCity = true;
+    } else {
+        m_inSpaceCity = false;
+    }
+    
+    // Log when entering space city
+    if (m_inSpaceCity && !wasInSpaceCity) {
+        SDL_Log("INFO: Entering space city section (index %d)", m_bgSequenceIndex);
+    }
+    
+    // Spawn item boxes periodically in space city
+    if (m_inSpaceCity) {
+        m_itemBoxSpawnTimer += deltaTime;
+        if (m_itemBoxSpawnTimer >= 2.0f) {  // Spawn every 2 seconds
+            int windowWidth;
+            SDL_GetWindowSize(m_window, &windowWidth, nullptr);
+            
+            // Spawn 2-3 boxes
+            int boxCount = 2 + (rand() % 2);
+            for (int i = 0; i < boxCount; i++) {
+                float boxX = 50.0f + (rand() % (windowWidth - 100));
+                float boxY = -50.0f - (i * 80.0f);  // Stagger slightly
+                m_itemBoxes.push_back(std::make_unique<ItemBox>(boxX, boxY));
+            }
+            
+            SDL_Log("INFO: Spawned %d item boxes (total: %zu)", boxCount, m_itemBoxes.size());
+            m_itemBoxSpawnTimer = 0.0f;
+        }
+    } else if (wasInSpaceCity && !m_inSpaceCity) {
+        // Just exited space city, reset timer
+        SDL_Log("INFO: Exiting space city section");
+        m_itemBoxSpawnTimer = 0.0f;
     }
     
     // Update player
@@ -853,11 +986,16 @@ void Game::update(float deltaTime) {
         }
     }
     
-    // Check if boss should spawn (every 20 enemies killed)
-    if (!m_boss && m_enemyKillCount >= 20) {
-        spawnBoss(m_currentStage);
-        m_enemyKillCount = 0;
-        m_enemies.clear();  // Clear all enemies when boss appears
+    // Update boss spawn timer after bg04
+    if (m_bg04Completed && !m_boss) {
+        m_bossSpawnTimer += deltaTime;
+        if (m_bossSpawnTimer >= 10.0f) {
+            spawnBoss(m_currentStage);
+            m_enemyKillCount = 0;
+            m_enemies.clear();  // Clear all enemies when boss appears
+            m_bg04Completed = false;  // Reset for next stage
+            m_bossSpawnTimer = 0.0f;
+        }
     }
 
     // Update boss
@@ -906,8 +1044,9 @@ void Game::update(float deltaTime) {
     }
 
     // Update enemies
+    float playerCenterX = m_player->getX() + m_player->getWidth() / 2;
     for (auto& enemy : m_enemies) {
-        enemy->update(deltaTime);
+        enemy->update(deltaTime, playerCenterX);
         
         // Enemy shoots occasionally
         if (enemy->canShoot()) {
@@ -959,8 +1098,8 @@ void Game::update(float deltaTime) {
     // Remove bullets that went off screen
     m_bullets.erase(
         std::remove_if(m_bullets.begin(), m_bullets.end(),
-            [](const std::unique_ptr<Bullet>& bullet) {
-                return bullet->isOffScreen();
+            [this](const std::unique_ptr<Bullet>& bullet) {
+                return bullet->isOffScreen(getWindowHeight());
             }),
         m_bullets.end()
     );
@@ -968,8 +1107,8 @@ void Game::update(float deltaTime) {
     // Remove enemy bullets that went off screen
     m_enemyBullets.erase(
         std::remove_if(m_enemyBullets.begin(), m_enemyBullets.end(),
-            [](const std::unique_ptr<Bullet>& bullet) {
-                return bullet->isOffScreen();
+            [this](const std::unique_ptr<Bullet>& bullet) {
+                return bullet->isOffScreen(getWindowHeight());
             }),
         m_enemyBullets.end()
     );
@@ -977,8 +1116,8 @@ void Game::update(float deltaTime) {
     // Remove enemy bullets that went off screen
     m_enemyBullets.erase(
         std::remove_if(m_enemyBullets.begin(), m_enemyBullets.end(),
-            [](const std::unique_ptr<Bullet>& bullet) {
-                return bullet->isOffScreen();
+            [this](const std::unique_ptr<Bullet>& bullet) {
+                return bullet->isOffScreen(getWindowHeight());
             }),
         m_enemyBullets.end()
     );
@@ -1055,6 +1194,20 @@ void Game::update(float deltaTime) {
         m_powerUps.end()
     );
     
+    // Update item boxes
+    for (auto& itemBox : m_itemBoxes) {
+        itemBox->update(deltaTime);
+    }
+    
+    // Remove item boxes that went off screen
+    m_itemBoxes.erase(
+        std::remove_if(m_itemBoxes.begin(), m_itemBoxes.end(),
+            [](const std::unique_ptr<ItemBox>& box) {
+                return box->isOffScreen();
+            }),
+        m_itemBoxes.end()
+    );
+    
     // Check player-enemy collision
     checkPlayerEnemyCollision();
     
@@ -1069,6 +1222,12 @@ void Game::update(float deltaTime) {
     
     // Check power-up collection
     checkPowerUpCollection();
+    
+    // Check item box collection
+    checkItemBoxCollection();
+    
+    // Check missile-item box collision
+    checkMissileItemBoxCollision();
 }
 
 void Game::checkPlayerEnemyCollision() {
@@ -1346,7 +1505,7 @@ void Game::spawnBoss(int stage) {
     }
     
     if (bossMusic) {
-        Mix_VolumeMusic(64);
+        Mix_VolumeMusic(128);
         if (Mix_PlayMusic(bossMusic, -1) == -1) {
             SDL_Log("ERROR: Failed to play boss music: %s", Mix_GetError());
         } else {
@@ -1478,11 +1637,45 @@ void Game::render() {
         
         // Render power-ups
         for (auto& powerUp : m_powerUps) {
-            powerUp->render(m_renderer);
+            powerUp->render(m_renderer, m_itemSTexture, m_itemLTexture, m_itemMTexture);
+        }
+        
+        // Render item boxes
+        for (auto& itemBox : m_itemBoxes) {
+            itemBox->render(m_renderer, m_itemBoxTexture, m_itemSTexture, m_itemLTexture, m_itemMTexture);
         }
         
         // Render UI
         renderUI();
+        
+        // Show pause overlay if paused
+        if (m_gameState == GameState::PAUSED) {
+            // Semi-transparent overlay
+            SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 128);
+            int windowWidth, windowHeight;
+            SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+            SDL_Rect overlay = {0, 0, windowWidth, windowHeight};
+            SDL_RenderFillRect(m_renderer, &overlay);
+            
+            // Render "PAUSED" text
+            SDL_Color white = {255, 255, 255, 255};
+            SDL_Surface* textSurface = TTF_RenderText_Solid(m_titleFont, "PAUSED", white);
+            if (textSurface) {
+                SDL_Texture* textTexture = SDL_CreateTextureFromSurface(m_renderer, textSurface);
+                if (textTexture) {
+                    SDL_Rect textRect = {
+                        windowWidth / 2 - textSurface->w / 2,
+                        windowHeight / 2 - textSurface->h / 2,
+                        textSurface->w,
+                        textSurface->h
+                    };
+                    SDL_RenderCopy(m_renderer, textTexture, nullptr, &textRect);
+                    SDL_DestroyTexture(textTexture);
+                }
+                SDL_FreeSurface(textSurface);
+            }
+        }
     }
     else if (m_gameState == GameState::GAME_OVER) {
         renderGameOver();
@@ -1522,45 +1715,61 @@ void Game::renderUI() {
         }
     }
     
-    // Bottom left: Power-up collection counters
+    // Bottom left: Power-up collection counters with icons
     if (m_subtitleFont) {
+        int iconSize = 32;  // Size of item icons
+        int textOffsetX = iconSize + 10;  // Text starts after icon
+        int lineHeight = 35;  // Space between lines
+        int startY = windowHeight - 110;
         
-        // Speed counter (Cyan)
-        std::string speedText = "S:" + std::to_string(m_player->getSpeedCount()) + "/3 Lv." + std::to_string(m_player->getSpeedLevel());
+        // Speed counter (Cyan) with icon
+        if (m_itemSTexture) {
+            SDL_Rect iconRect = {10, startY, iconSize, iconSize};
+            SDL_RenderCopy(m_renderer, m_itemSTexture, nullptr, &iconRect);
+        }
+        std::string speedText = std::to_string(m_player->getSpeedCount()) + "/3 Lv." + std::to_string(m_player->getSpeedLevel());
         SDL_Color speedColor = {0, 255, 255, 255};
         SDL_Surface* speedSurface = TTF_RenderText_Blended(m_subtitleFont, speedText.c_str(), speedColor);
         if (speedSurface) {
             SDL_Texture* speedTexture = SDL_CreateTextureFromSurface(m_renderer, speedSurface);
             if (speedTexture) {
-                SDL_Rect speedRect = {10, windowHeight - 100, speedSurface->w, speedSurface->h};
+                SDL_Rect speedRect = {10 + textOffsetX, startY + (iconSize - speedSurface->h) / 2, speedSurface->w, speedSurface->h};
                 SDL_RenderCopy(m_renderer, speedTexture, nullptr, &speedRect);
                 SDL_DestroyTexture(speedTexture);
             }
             SDL_FreeSurface(speedSurface);
         }
         
-        // Laser counter (Yellow)
-        std::string laserText = "L:" + std::to_string(m_player->getLaserCount()) + "/3 Lv." + std::to_string(m_player->getLaserLevel());
+        // Laser counter (Yellow) with icon
+        if (m_itemLTexture) {
+            SDL_Rect iconRect = {10, startY + lineHeight, iconSize, iconSize};
+            SDL_RenderCopy(m_renderer, m_itemLTexture, nullptr, &iconRect);
+        }
+        std::string laserText = std::to_string(m_player->getLaserCount()) + "/3 Lv." + std::to_string(m_player->getLaserLevel());
         SDL_Color laserColor = {255, 255, 0, 255};
         SDL_Surface* laserSurface = TTF_RenderText_Blended(m_subtitleFont, laserText.c_str(), laserColor);
         if (laserSurface) {
             SDL_Texture* laserTexture = SDL_CreateTextureFromSurface(m_renderer, laserSurface);
             if (laserTexture) {
-                SDL_Rect laserRect = {10, windowHeight - 70, laserSurface->w, laserSurface->h};
+                SDL_Rect laserRect = {10 + textOffsetX, startY + lineHeight + (iconSize - laserSurface->h) / 2, laserSurface->w, laserSurface->h};
                 SDL_RenderCopy(m_renderer, laserTexture, nullptr, &laserRect);
                 SDL_DestroyTexture(laserTexture);
             }
             SDL_FreeSurface(laserSurface);
         }
         
-        // Missile counter (Orange)
-        std::string missileText = "M:" + std::to_string(m_player->getMissileCount()) + "/3 Lv." + std::to_string(m_player->getMissileLevel());
+        // Missile counter (Orange) with icon
+        if (m_itemMTexture) {
+            SDL_Rect iconRect = {10, startY + lineHeight * 2, iconSize, iconSize};
+            SDL_RenderCopy(m_renderer, m_itemMTexture, nullptr, &iconRect);
+        }
+        std::string missileText = std::to_string(m_player->getMissileCount()) + "/3 Lv." + std::to_string(m_player->getMissileLevel());
         SDL_Color missileColor = {255, 165, 0, 255};
         SDL_Surface* missileSurface = TTF_RenderText_Blended(m_subtitleFont, missileText.c_str(), missileColor);
         if (missileSurface) {
             SDL_Texture* missileTexture = SDL_CreateTextureFromSurface(m_renderer, missileSurface);
             if (missileTexture) {
-                SDL_Rect missileRect = {10, windowHeight - 40, missileSurface->w, missileSurface->h};
+                SDL_Rect missileRect = {10 + textOffsetX, startY + lineHeight * 2 + (iconSize - missileSurface->h) / 2, missileSurface->w, missileSurface->h};
                 SDL_RenderCopy(m_renderer, missileTexture, nullptr, &missileRect);
                 SDL_DestroyTexture(missileTexture);
             }
@@ -2317,4 +2526,101 @@ void Game::checkPowerUpCollection() {
             ++powerUpIt;
         }
     }
+}
+void Game::checkItemBoxCollection() {
+    for (auto boxIt = m_itemBoxes.begin(); boxIt != m_itemBoxes.end();) {
+        // Only collect revealed boxes
+        if (!(*boxIt)->isRevealed()) {
+            ++boxIt;
+            continue;
+        }
+        
+        // Check collision with player
+        if (m_player->getX() < (*boxIt)->getX() + (*boxIt)->getWidth() &&
+            m_player->getX() + m_player->getWidth() > (*boxIt)->getX() &&
+            m_player->getY() < (*boxIt)->getY() + (*boxIt)->getHeight() &&
+            m_player->getY() + m_player->getHeight() > (*boxIt)->getY()) {
+            
+            // Apply item effect based on revealed state
+            ItemBox::BoxState state = (*boxIt)->getState();
+            
+            if (state == ItemBox::BoxState::REVEALED_S) {
+                // Speed up
+                m_player->collectSpeed();
+                SDL_Log("INFO: Speed collected from item box!");
+            } else if (state == ItemBox::BoxState::REVEALED_L) {
+                // Laser up
+                m_player->collectLaser();
+                SDL_Log("INFO: Laser collected from item box!");
+            } else if (state == ItemBox::BoxState::REVEALED_M) {
+                // Missile up
+                m_player->collectMissile();
+                SDL_Log("INFO: Missile collected from item box!");
+            }
+            
+            // Play sound
+            if (m_shootSound) {
+                Mix_PlayChannel(-1, m_shootSound, 0);
+            }
+            
+            boxIt = m_itemBoxes.erase(boxIt);
+        } else {
+            ++boxIt;
+        }
+    }
+}
+
+void Game::checkMissileItemBoxCollision() {
+    for (auto bulletIt = m_bullets.begin(); bulletIt != m_bullets.end();) {
+        bool bulletRemoved = false;
+        
+        // Only missiles can reveal item boxes
+        if ((*bulletIt)->getType() == Bullet::BulletType::MISSILE) {
+            for (auto& box : m_itemBoxes) {
+                // Only hidden boxes can be revealed
+                if (box->getState() == ItemBox::BoxState::HIDDEN) {
+                    // Check collision
+                    if ((*bulletIt)->getX() < box->getX() + box->getWidth() &&
+                        (*bulletIt)->getX() + (*bulletIt)->getWidth() > box->getX() &&
+                        (*bulletIt)->getY() < box->getY() + box->getHeight() &&
+                        (*bulletIt)->getY() + (*bulletIt)->getHeight() > box->getY()) {
+                        
+                        // Reveal the box (open it)
+                        box->reveal();
+                        SDL_Log("INFO: Item box opened!");
+                        
+                        // Play explosion sound
+                        if (m_explosionSound) {
+                            Mix_PlayChannel(-1, m_explosionSound, 0);
+                        }
+                        
+                        bulletIt = m_bullets.erase(bulletIt);
+                        bulletRemoved = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!bulletRemoved) {
+            ++bulletIt;
+        }
+    }
+}
+
+void Game::spawnItemBoxes() {
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(m_window, &windowWidth, &windowHeight);
+    
+    // Spawn 3-5 random item boxes at the start
+    int boxCount = 3 + (rand() % 3);  // 3-5 boxes
+    
+    for (int i = 0; i < boxCount; i++) {
+        float boxX = 50.0f + (rand() % (windowWidth - 100));
+        float boxY = -200.0f - (i * 150.0f);  // Stagger vertically
+        
+        m_itemBoxes.push_back(std::make_unique<ItemBox>(boxX, boxY));
+    }
+    
+    SDL_Log("INFO: Spawned %d item boxes", boxCount);
 }

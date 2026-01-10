@@ -14,7 +14,7 @@ public:
     Enemy(float x, float y, EnemyType type, bool isSpecial = false);
     ~Enemy();
 
-    void update(float deltaTime);
+    void update(float deltaTime, float playerX = -1.0f);
     void render(SDL_Renderer* renderer);
     void render(SDL_Renderer* renderer, SDL_Texture* texture, SDL_Rect* srcRect);
 

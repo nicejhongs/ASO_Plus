@@ -11,6 +11,7 @@
 #include "Boss.h"
 #include "Bullet.h"
 #include "PowerUp.h"
+#include "ItemBox.h"
 
 class Game {
 public:
@@ -19,6 +20,7 @@ public:
         MENU,
         COUNTDOWN,
         PLAYING,
+        PAUSED,
         GAME_OVER
     };
 
@@ -50,6 +52,7 @@ private:
     std::vector<std::unique_ptr<Bullet>> m_bullets;
     std::vector<std::unique_ptr<Bullet>> m_enemyBullets;  // Enemy bullets
     std::vector<std::unique_ptr<PowerUp>> m_powerUps;
+    std::vector<std::unique_ptr<ItemBox>> m_itemBoxes;  // Item boxes
 
     float m_enemySpawnTimer;
     const float m_enemySpawnInterval = 2.0f;
@@ -93,6 +96,10 @@ private:
     int m_maxBg03Loops;  // Maximum loops for bg03 before switching to bg04
     SDL_Texture* m_currentSequenceTexture;  // Currently active texture in sequence
     SDL_Texture* m_nextSequenceTexture;  // Next texture to be loaded
+    float m_bossSpawnTimer;  // Timer for boss spawn after bg04
+    bool m_bg04Completed;  // Whether bg04 has been completed
+    float m_itemBoxSpawnTimer;  // Timer for spawning item boxes in space city
+    bool m_inSpaceCity;  // Whether currently in space city section (bg02-04)
     
     SDL_Texture* m_playerTexture;  // ship_01.png (legacy)
     SDL_Texture* m_shipStopTexture;  // ship_stop.png
@@ -115,6 +122,11 @@ private:
     SDL_Texture* m_boom05Texture;  // boom05.png
     SDL_Texture* m_boom06Texture;  // boom06.png
     
+    SDL_Texture* m_itemBoxTexture;  // item_box.png (hidden box)
+    SDL_Texture* m_itemSTexture;    // item_s.png (speed)
+    SDL_Texture* m_itemLTexture;    // item_l.png (laser)
+    SDL_Texture* m_itemMTexture;    // item_m.png (missile)
+    
     TTF_Font* m_titleFont;  // Title font
     TTF_Font* m_uiFont;     // UI font (score, countdown)
     TTF_Font* m_subtitleFont;  // Subtitle font
@@ -129,6 +141,9 @@ private:
     void checkPlayerBossCollision();
     void checkBossBulletCollision();
     void checkPowerUpCollection();
+    void checkItemBoxCollection();
+    void checkMissileItemBoxCollision();
+    void spawnItemBoxes();
     void dropPowerUp(float x, float y);
     void damagePlayer();
     void spawnBoss(int stage);

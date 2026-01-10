@@ -39,7 +39,7 @@ public:
     ~PowerUp();
 
     void update(float deltaTime);
-    void render(SDL_Renderer* renderer);
+    void render(SDL_Renderer* renderer, SDL_Texture* sTexture = nullptr, SDL_Texture* lTexture = nullptr, SDL_Texture* mTexture = nullptr);
 
     float getX() const { return m_x; }
     float getY() const { return m_y; }

@@ -4,8 +4,8 @@
 PowerUp::PowerUp(float x, float y, PowerUpType type)
     : m_x(x)
     , m_y(y)
-    , m_width(30.0f)
-    , m_height(30.0f)
+    , m_width(50.0f)  // Increased from 30 to 50
+    , m_height(50.0f)  // Increased from 30 to 50
     , m_speed(80.0f)
     , m_type(type)
     , m_blinkTimer(0.0f)
@@ -20,7 +20,7 @@ void PowerUp::update(float deltaTime) {
     m_blinkTimer += deltaTime;
 }
 
-void PowerUp::render(SDL_Renderer* renderer) {
+void PowerUp::render(SDL_Renderer* renderer, SDL_Texture* sTexture, SDL_Texture* lTexture, SDL_Texture* mTexture) {
     // Blinking effect for some items
     bool shouldBlink = (m_type == PowerUpType::SPEED_DOWN || 
                         m_type == PowerUpType::LASER_DOWN || 
@@ -31,6 +31,28 @@ void PowerUp::render(SDL_Renderer* renderer) {
         return; // Skip rendering (blink off)
     }
     
+    // Use textures for S, L, M power-ups
+    SDL_Texture* texture = nullptr;
+    if (m_type == PowerUpType::SPEED && sTexture) {
+        texture = sTexture;
+    } else if (m_type == PowerUpType::LASER && lTexture) {
+        texture = lTexture;
+    } else if (m_type == PowerUpType::MISSILE && mTexture) {
+        texture = mTexture;
+    }
+    
+    if (texture) {
+        SDL_Rect rect = {
+            static_cast<int>(m_x),
+            static_cast<int>(m_y),
+            static_cast<int>(m_width),
+            static_cast<int>(m_height)
+        };
+        SDL_RenderCopy(renderer, texture, nullptr, &rect);
+        return;
+    }
+    
+    // Fallback to colored rectangles for other power-up types
     SDL_Rect rect = {
         static_cast<int>(m_x),
         static_cast<int>(m_y),
@@ -38,7 +60,7 @@ void PowerUp::render(SDL_Renderer* renderer) {
         static_cast<int>(m_height)
     };
     
-    // Set color based on type
+    // Set color based on type (fallback for other types)
     switch (m_type) {
         case PowerUpType::SPEED:
             SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255); // Cyan

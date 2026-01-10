@@ -19,6 +19,7 @@ set(SOURCES
     src/Boss.cpp
     src/Bullet.cpp
     src/PowerUp.cpp
+    src/ItemBox.cpp
 )
 
 # 실행 파일 생성

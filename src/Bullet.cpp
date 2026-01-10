@@ -59,6 +59,6 @@ void Bullet::render(SDL_Renderer* renderer) {
     SDL_RenderFillRect(renderer, &rect);
 }
 
-bool Bullet::isOffScreen() const {
-    return m_y < -20 || m_y > 620; // Remove when it goes off screen top or bottom
+bool Bullet::isOffScreen(int windowHeight) const {
+    return m_y < -20 || m_y > windowHeight + 20; // Remove when it goes off screen top or bottom
 }
